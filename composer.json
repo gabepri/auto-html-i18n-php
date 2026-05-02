@@ -1,5 +1,5 @@
 {
-    "name": "gabepri/auto-dom-i18n",
+    "name": "gabepri/auto-html-i18n",
     "description": "Server-side automatic translation for PHP-rendered HTML. Walks markup, masks variables, and resolves translations via a user-supplied backend. ICU MessageFormat supported.",
     "type": "library",
     "license": "MIT",
@@ -18,12 +18,12 @@
     },
     "autoload": {
         "psr-4": {
-            "AutoDomI18n\\": "src/"
+            "AutoHtmlI18n\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "AutoDomI18n\\Tests\\": "tests/"
+            "AutoHtmlI18n\\Tests\\": "tests/"
         }
     },
     "config": {

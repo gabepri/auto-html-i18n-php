@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace AutoDomI18n\Tests;
+namespace AutoHtmlI18n\Tests;
 
-use AutoDomI18n\CasePattern;
-use AutoDomI18n\Masker;
+use AutoHtmlI18n\CasePattern;
+use AutoHtmlI18n\Masker;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 

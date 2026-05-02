@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace AutoDomI18n\Tests;
+namespace AutoHtmlI18n\Tests;
 
-use AutoDomI18n\I18nTranslator;
-use AutoDomI18n\TranslationItem;
+use AutoHtmlI18n\I18nTranslator;
+use AutoHtmlI18n\TranslationItem;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace AutoDomI18n\Tests;
+namespace AutoHtmlI18n\Tests;
 
-use AutoDomI18n\CasePattern;
-use AutoDomI18n\Masker;
-use AutoDomI18n\VariableInfo;
-use AutoDomI18n\VariableType;
+use AutoHtmlI18n\CasePattern;
+use AutoHtmlI18n\Masker;
+use AutoHtmlI18n\VariableInfo;
+use AutoHtmlI18n\VariableType;
 use PHPUnit\Framework\TestCase;
 
 final class MaskerTest extends TestCase

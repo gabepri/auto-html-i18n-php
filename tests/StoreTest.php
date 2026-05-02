@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace AutoDomI18n\Tests;
+namespace AutoHtmlI18n\Tests;
 
-use AutoDomI18n\EntryStatus;
-use AutoDomI18n\Store;
+use AutoHtmlI18n\EntryStatus;
+use AutoHtmlI18n\Store;
 use PHPUnit\Framework\TestCase;
 
 final class StoreTest extends TestCase

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AutoDomI18n;
+namespace AutoHtmlI18n;
 
 final class Resolver
 {

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace AutoDomI18n\Tests;
+namespace AutoHtmlI18n\Tests;
 
-use AutoDomI18n\Resolver;
+use AutoHtmlI18n\Resolver;
 use PHPUnit\Framework\TestCase;
 
 final class ResolverTest extends TestCase

@@ -1,4 +1,4 @@
-# auto-dom-i18n (PHP)
+# auto-html-i18n (PHP)
 
 Server-side automatic translation for PHP-rendered HTML. Walks markup, masks dynamic values (numbers, dates, names, URLs, inline tags) into stable cache keys, looks them up in a translation cache, and falls back to a user-supplied backend for cache misses. Returns translated HTML in a single synchronous pass — no async bookkeeping, no client-side JS required.
 
@@ -7,7 +7,7 @@ This is the PHP sibling of [`packages/js`](../js). Both packages share the same 
 ## Install
 
 ```bash
-composer require gabepri/auto-dom-i18n
+composer require gabepri/auto-html-i18n
 ```
 
 Requires PHP 8.1+, the `intl` and `mbstring` extensions.
@@ -15,8 +15,8 @@ Requires PHP 8.1+, the `intl` and `mbstring` extensions.
 ## Quickstart
 
 ```php
-use AutoDomI18n\I18nTranslator;
-use AutoDomI18n\TranslationItem;
+use AutoHtmlI18n\I18nTranslator;
+use AutoHtmlI18n\TranslationItem;
 
 $i18n = new I18nTranslator([
     'locale' => 'es',

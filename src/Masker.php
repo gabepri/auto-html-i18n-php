@@ -171,9 +171,8 @@ final class Masker
 
         $result = '';
         $inTag = false;
-        $len = strlen($text);
-        for ($i = 0; $i < $len; $i++) {
-            $ch = $text[$i];
+        // Iterate by code point so multi-byte chars (e.g. í) aren't split mid-byte.
+        foreach (mb_str_split($text, 1, 'UTF-8') as $ch) {
             if ($ch === '<') {
                 $inTag = true;
             }

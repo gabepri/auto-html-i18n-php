@@ -50,6 +50,8 @@ This means **you only translate the abstract sentence shape once** — `You have
 
 Tags outside `allowedInlineTags` (an `<input>`, `<svg>`, `<div>`, …) are captured as opaque `markup` variables instead of being left in the key — so their volatile attributes (random ids, gradient refs) never destabilize the cache key, and the original markup is restored verbatim on output. Nested same-name inline tags (`<span><span>…</span></span>`) are matched opener-to-closer by a stack, so their indices never cross.
 
+An element's markup is aggregated into a single translatable unit only when its **entire descendant subtree** is inline-allowed **and it has direct interleaved text of its own**. A pure container of inline elements with no direct text — a nav menu, link list, or button group — is treated as structural, so each child is translated on its own and keeps its own cache key rather than collapsing the whole container into one key.
+
 ## API
 
 ### `new I18nTranslator(array $config)`

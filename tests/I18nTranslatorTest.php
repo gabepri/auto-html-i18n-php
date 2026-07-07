@@ -322,6 +322,74 @@ final class I18nTranslatorTest extends TestCase
         }
     }
 
+    public function testTranslateHtmlDoesNotAggregatePureInlineContainer(): void
+    {
+        // A container whose only children are inline links (a nav menu / dropdown)
+        // has no direct text of its own — each link must be offered as its own
+        // unit, not collapsed into a single aggregated innerHTML key.
+        $captured = [];
+        $i = $this->make([
+            'onMissingTranslation' => function (array $items, string $locale) use (&$captured): array {
+                $captured = $items;
+                return [];
+            },
+        ]);
+        $i->translateHtml('<nav><a href="/a">Home</a><a href="/b">About</a></nav>');
+        $masks = array_map(fn(TranslationItem $it) => $it->masked, $captured);
+        self::assertCount(2, $masks);
+        self::assertContains('Home', $masks);
+        self::assertContains('About', $masks);
+        foreach ($masks as $m) {
+            self::assertStringNotContainsString('<a0>', $m);
+        }
+    }
+
+    public function testTranslateHtmlDoesNotAggregateAdjacentInlineChildrenWithoutText(): void
+    {
+        // Parity with the JS Observer: adjacent inline children with no connective
+        // text are structural, translated per-child rather than as one unit.
+        $captured = [];
+        $i = $this->make([
+            'onMissingTranslation' => function (array $items, string $locale) use (&$captured): array {
+                $captured = $items;
+                return [];
+            },
+        ]);
+        $i->translateHtml('<p><b>Hello</b><i>World</i></p>');
+        $masks = array_map(fn(TranslationItem $it) => $it->masked, $captured);
+        self::assertCount(2, $masks);
+        self::assertContains('Hello', $masks);
+        self::assertContains('World', $masks);
+    }
+
+    public function testTranslateHtmlTranslatesEachMenuLinkPreservingAnchor(): void
+    {
+        // Each link's text is translated in place and its <a href> preserved.
+        $i = $this->make([
+            'onMissingTranslation' => fn(array $items, string $locale): array => ['Home' => 'Inicio'],
+        ]);
+        $out = $i->translateHtml('<nav><a href="/a">Home</a></nav>');
+        self::assertStringContainsString('<a href="/a">Inicio</a>', $out);
+    }
+
+    public function testTranslateHtmlStillAggregatesLinksWithVisibleSeparator(): void
+    {
+        // Direct text " / " makes this a formatted run — it stays one aggregated
+        // unit (Layer 1 only excludes containers with no direct text of their own).
+        $captured = [];
+        $i = $this->make([
+            'onMissingTranslation' => function (array $items, string $locale) use (&$captured): array {
+                $captured = $items;
+                return [];
+            },
+        ]);
+        $i->translateHtml('<nav><a href="/">Home</a> / <a href="/p">Products</a></nav>');
+        $masks = array_map(fn(TranslationItem $it) => $it->masked, $captured);
+        self::assertCount(1, $masks);
+        self::assertStringContainsString('<a0>Home</a0>', $masks[0]);
+        self::assertStringContainsString('<a1>Products</a1>', $masks[0]);
+    }
+
     public function testTranslateHtmlSkipsDataI18nIgnoreAttribute(): void
     {
         $captured = [];

@@ -260,8 +260,13 @@ final class HtmlWalker
         if ($childCount === 0) {
             return false;
         }
-        // Wrapper around a single inline child with no surrounding text — not an aggregation candidate
-        if ($childCount === 1 && !$this->hasDirectTextContent($element)) {
+        // Aggregate only a genuine formatted sentence — one with its own direct,
+        // interleaved text. A container whose children are all inline elements but
+        // which has no direct text of its own (a nav menu, link list, or button
+        // group) is structural, not a sentence; translate its children individually
+        // so each keeps its own cache key. (This subsumes the single-inline-child
+        // wrapper case.)
+        if (!$this->hasDirectTextContent($element)) {
             return false;
         }
         return true;

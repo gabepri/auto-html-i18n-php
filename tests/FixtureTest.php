@@ -149,6 +149,79 @@ final class FixtureTest extends TestCase
     }
 
     /**
+     * @param array<int,array<string,mixed>> $variables
+     * @param array<string,mixed> $config
+     * @param array<string,mixed> $expected
+     */
+    #[DataProvider('icuValidateFixtureProvider')]
+    public function testIcuValidateFixture(
+        string $name,
+        string $translated,
+        array $variables,
+        string $locale,
+        array $config,
+        array $expected,
+    ): void {
+        $ignoreWords = $config['ignoreWords'] ?? [];
+        $allowedTags = $config['allowedInlineTags'] ?? self::DEFAULT_ALLOWED_TAGS;
+
+        $masker = new Masker($ignoreWords, $allowedTags);
+        $vars = array_map(
+            static fn(array $v): VariableInfo => new VariableInfo(
+                (string) $v['value'],
+                VariableType::from((string) $v['type']),
+                $v['meta'] ?? null,
+            ),
+            $variables,
+        );
+
+        $result = $masker->validateIcu($translated, $vars, $locale);
+
+        self::assertSame($expected['valid'], $result->valid, "valid mismatch for: $name");
+        self::assertSame($expected['format'], $result->format->value, "format mismatch for: $name");
+        if (array_key_exists('output', $expected)) {
+            self::assertSame($expected['output'], $result->output, "output mismatch for: $name");
+        }
+        if ($expected['valid'] === false) {
+            // Error text is engine-specific; only its presence is part of the contract
+            self::assertNotNull($result->error, "error expected for: $name");
+        }
+    }
+
+    /**
+     * @return iterable<string,array{0:string,1:string,2:array<int,array<string,mixed>>,3:string,4:array<string,mixed>,5:array<string,mixed>}>
+     */
+    public static function icuValidateFixtureProvider(): iterable
+    {
+        $dir = realpath(__DIR__ . '/../../../fixtures/icu-validate');
+        if ($dir === false) {
+            throw new \RuntimeException('fixtures/icu-validate directory not found');
+        }
+        $files = glob($dir . '/*.json') ?: [];
+        sort($files);
+        foreach ($files as $file) {
+            $base = basename($file);
+            $contents = file_get_contents($file);
+            if ($contents === false) {
+                continue;
+            }
+            /** @var array<int,array<string,mixed>> $cases */
+            $cases = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+            foreach ($cases as $case) {
+                $name = $base . ': ' . ($case['name'] ?? '(unnamed)');
+                yield $name => [
+                    $name,
+                    (string) ($case['translated'] ?? ''),
+                    (array) ($case['variables'] ?? []),
+                    (string) ($case['locale'] ?? 'en'),
+                    (array) ($case['config'] ?? []),
+                    (array) ($case['expected'] ?? []),
+                ];
+            }
+        }
+    }
+
+    /**
      * Normalize JSON-decoded variables so the test compares apples to apples.
      * The fixture format omits `meta` when absent; VariableInfo::toArray() does the same.
      *

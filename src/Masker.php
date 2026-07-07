@@ -194,11 +194,9 @@ final class Masker
             return '';
         }
 
-        // Detect format: {{N}} = simple substitution; {N} or {N, plural/select, ...} = ICU.
-        $hasDoubleBrace = preg_match('/\{\{\d+\}\}/', $translated) === 1;
-        $isICU = !$hasDoubleBrace && preg_match('/\{\d+/', $translated) === 1;
+        $format = $this->detectFormat($translated);
 
-        if ($isICU && $locale !== null) {
+        if ($format === TranslationFormat::Icu && $locale !== null) {
             $result = $this->evaluateICU($translated, $variables, $locale);
             if ($result === null) {
                 if ($original !== null) {
@@ -223,7 +221,105 @@ final class Masker
             $result = is_string($result) ? $result : $translated;
         }
 
-        // Restore opening tag attributes: <tagN> -> <tag attrs...>
+        $result = $this->restoreTagAttributes($result, $tagAttributes);
+
+        // Sanitize: escape any HTML tags not in the allowlist
+        return $this->sanitizeTags($result);
+    }
+
+    /**
+     * Dry-runs a translation string exactly as consumption would: detects the
+     * format ({{N}} simple, {N ICU, or plain), evaluates it against the given
+     * variables, and reports the rendered output or the failure reason.
+     *
+     * @param VariableInfo[] $variables
+     * @param array<string,array<string,string>> $tagAttributes
+     */
+    public function validateIcu(string $translated, array $variables, string $locale, array $tagAttributes = []): IcuValidationResult
+    {
+        $format = $this->detectFormat($translated);
+
+        if ($format === TranslationFormat::Icu) {
+            [$output, $error] = $this->evaluateICUDetailed($translated, $variables, $locale);
+            if ($output === null) {
+                return new IcuValidationResult(false, $format, $error ?? 'ICU evaluation failed');
+            }
+        } elseif ($format === TranslationFormat::Simple) {
+            $missing = [];
+            $output = preg_replace_callback(
+                '/\{\{(\d+)\}\}/',
+                function (array $m) use ($variables, &$missing): string {
+                    $idx = (int) $m[1];
+                    if (!isset($variables[$idx])) {
+                        $missing[$m[0]] = true;
+                        return $m[0];
+                    }
+                    return $variables[$idx]->value;
+                },
+                $translated,
+            );
+            $output = is_string($output) ? $output : $translated;
+            if ($missing !== []) {
+                return new IcuValidationResult(
+                    false,
+                    $format,
+                    'substitution references ' . implode(', ', array_keys($missing))
+                        . ' but only ' . count($variables) . ' variable(s) were provided',
+                );
+            }
+        } else {
+            $output = $translated;
+        }
+
+        if ($tagAttributes !== []) {
+            $output = $this->restoreTagAttributes($output, $tagAttributes);
+        }
+        $output = $this->sanitizeTags($output);
+
+        return new IcuValidationResult(true, $format, null, $output);
+    }
+
+    /**
+     * Masks $original to derive the variables and tag attributes consumption
+     * would see, then validates $translated against them — including the case
+     * pattern and edge whitespace the rendered output would carry.
+     */
+    public function validateTranslation(string $original, string $translated, string $locale): IcuValidationResult
+    {
+        $maskResult = $this->mask($original);
+        $result = $this->validateIcu($translated, $maskResult->variables, $locale, $maskResult->tagAttributes);
+        if (!$result->valid || $result->output === null) {
+            return $result;
+        }
+        $output = $maskResult->leadingWhitespace
+            . $this->applyCasePattern($result->output, $maskResult->casePattern)
+            . $maskResult->trailingWhitespace;
+        return new IcuValidationResult(true, $result->format, null, $output);
+    }
+
+    /**
+     * How a translation string will be consumed: {{N}} = simple substitution
+     * (our format), {N} or {N, plural/select, ...} = ICU, otherwise plain text.
+     * Single source of truth for both unmask() and validateIcu().
+     */
+    private function detectFormat(string $translated): TranslationFormat
+    {
+        if (preg_match('/\{\{\d+\}\}/', $translated) === 1) {
+            return TranslationFormat::Simple;
+        }
+        if (preg_match('/\{\d+/', $translated) === 1) {
+            return TranslationFormat::Icu;
+        }
+        return TranslationFormat::Plain;
+    }
+
+    /**
+     * Restores opening tags (<tagN> -> <tag attrs...>) and closing tags (</tagN> -> </tag>).
+     *
+     * @param array<string,array<string,string>> $tagAttributes
+     */
+    private function restoreTagAttributes(string $text, array $tagAttributes): string
+    {
         $result = preg_replace_callback(
             '/<(\w+?)(\d+)>/',
             function (array $m) use ($tagAttributes): string {
@@ -242,11 +338,10 @@ final class Masker
                 $safeAttrs = implode(' ', $parts);
                 return $safeAttrs === '' ? '<' . $m[1] . '>' : '<' . $m[1] . ' ' . $safeAttrs . '>';
             },
-            $result,
-        ) ?? $result;
+            $text,
+        ) ?? $text;
 
-        // Restore closing tags: </tagN> -> </tag>
-        $result = preg_replace_callback(
+        return preg_replace_callback(
             '#</(\w+?)(\d+)>#',
             function (array $m) use ($tagAttributes): string {
                 $tagKey = $m[1] . $m[2];
@@ -254,9 +349,6 @@ final class Masker
             },
             $result,
         ) ?? $result;
-
-        // Sanitize: escape any HTML tags not in the allowlist
-        return $this->sanitizeTags($result);
     }
 
     /**
@@ -356,6 +448,15 @@ final class Masker
      */
     private function evaluateICU(string $pattern, array $variables, string $locale): ?string
     {
+        return $this->evaluateICUDetailed($pattern, $variables, $locale)[0];
+    }
+
+    /**
+     * @param VariableInfo[] $variables
+     * @return array{0:?string,1:?string} [output, error] — exactly one is non-null
+     */
+    private function evaluateICUDetailed(string $pattern, array $variables, string $locale): array
+    {
         // Temporarily replace HTML tags so they don't confuse the ICU parser.
         $tagPlaceholders = [];
         $icuPattern = preg_replace_callback(
@@ -368,7 +469,7 @@ final class Masker
             $pattern,
         );
         if (!is_string($icuPattern)) {
-            return null;
+            return [null, 'failed to preprocess pattern'];
         }
 
         $args = [];
@@ -384,22 +485,23 @@ final class Masker
 
         $fmt = MessageFormatter::create($locale, $icuPattern);
         if ($fmt === null) {
-            return null;
+            $error = intl_get_error_message();
+            return [null, $error !== '' ? $error : 'invalid ICU pattern'];
         }
         $result = $fmt->format($args);
         if ($result === false) {
-            return null;
+            return [null, $fmt->getErrorMessage()];
         }
         // ICU renders missing arguments as literal {N}/{N_key} placeholders and
         // still reports success — treat any survivor as an evaluation failure.
         // Checked before tag restoration so tag content cannot false-positive.
-        if (preg_match('/\{\d+(_\w+)?\}/', $result) === 1) {
-            return null;
+        if (preg_match_all('/\{\d+(?:_\w+)?\}/', $result, $m) > 0) {
+            return [null, 'unfilled ICU argument(s): ' . implode(', ', array_unique($m[0]))];
         }
         foreach ($tagPlaceholders as [$ph, $orig]) {
             $result = str_replace($ph, $orig, $result);
         }
-        return $result;
+        return [$result, null];
     }
 
     private function sanitizeTags(string $html): string

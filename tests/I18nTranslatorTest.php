@@ -6,6 +6,8 @@ namespace AutoHtmlI18n\Tests;
 
 use AutoHtmlI18n\I18nTranslator;
 use AutoHtmlI18n\TranslationItem;
+use AutoHtmlI18n\VariableInfo;
+use AutoHtmlI18n\VariableType;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
@@ -151,6 +153,58 @@ final class I18nTranslatorTest extends TestCase
         $out = $i->translateHtml('<button title="10 results found"></button>');
         self::assertStringContainsString('title="10 results found"', $out);
         self::assertStringNotContainsString('plural', $out);
+    }
+
+    public function testValidateIcuUsesInstanceLocaleByDefault(): void
+    {
+        $i = $this->make(); // locale: es
+        $r = $i->validateIcu(
+            '{0, plural, one {# oveja} other {# ovejas}}',
+            [new VariableInfo('5', VariableType::Number)],
+        );
+        self::assertTrue($r->valid);
+        self::assertSame('5 ovejas', $r->output);
+    }
+
+    public function testValidateIcuAcceptsExplicitLocale(): void
+    {
+        $i = $this->make();
+        $r = $i->validateIcu(
+            '{0, plural, one {# item} other {# items}}',
+            [new VariableInfo('1', VariableType::Number)],
+            'en',
+        );
+        self::assertTrue($r->valid);
+        self::assertSame('1 item', $r->output);
+    }
+
+    public function testValidateIcuReportsInvalidPattern(): void
+    {
+        $i = $this->make();
+        $r = $i->validateIcu('{0, plural, {broken}', [new VariableInfo('5', VariableType::Number)]);
+        self::assertFalse($r->valid);
+        self::assertNotNull($r->error);
+    }
+
+    public function testValidateTranslationUsesInstanceConfig(): void
+    {
+        $i = $this->make([
+            'ignoreWords' => [['word' => 'Mary', 'meta' => ['gender' => 'female']]],
+        ]);
+        $r = $i->validateTranslation(
+            'Mary bought 5 sheep',
+            '{0_gender, select, female {{0} compró} other {{0} compró}} {1, plural, one {# oveja} other {# ovejas}}',
+        );
+        self::assertTrue($r->valid);
+        self::assertSame('Mary compró 5 ovejas', $r->output);
+    }
+
+    public function testValidateTranslationRejectsUnrenderableTranslation(): void
+    {
+        $i = $this->make();
+        $r = $i->validateTranslation('5 sheep', '{2, plural, one {# oveja} other {# ovejas}}');
+        self::assertFalse($r->valid);
+        self::assertNotNull($r->error);
     }
 
     public function testTranslateHtmlFallsBackWhenIcuReferencesMissingVariable(): void

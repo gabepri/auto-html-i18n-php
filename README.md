@@ -76,6 +76,11 @@ $i18n->translateHtml(string $html): string
 // (No masking, no ICU — just {{N}} substitution.)
 $i18n->translate(string $text, array $variables = [], ?string $scope = null): string
 
+// Dry-run validation: check a translation string will render, the same way
+// translateHtml() consumes it. See "Validating translations" below.
+$i18n->validateIcu(string $translated, array $variables = [], ?string $locale = null): IcuValidationResult
+$i18n->validateTranslation(string $original, string $translated, ?string $locale = null): IcuValidationResult
+
 // Locale management
 $i18n->getLocale(): string
 $i18n->setLocale(string $locale): void
@@ -126,6 +131,26 @@ Translations may use [ICU MessageFormat](https://unicode-org.github.io/icu/userg
 When an ignoreWord carries metadata (e.g. `['word' => 'Mary', 'meta' => ['gender' => 'female']]`), that metadata is exposed to ICU as `{N_key}` arguments — letting translations branch on `{0_gender, select, female {...} other {...}}`.
 
 If an ICU pattern fails to parse or evaluate — including when it references a variable index or metadata key that doesn't exist (PHP's `MessageFormatter` would otherwise render a literal `{1}` and report success) — the affected text falls back to its original untranslated source. Neither the raw pattern nor unfilled placeholders are ever rendered into the output HTML.
+
+### Validating translations
+
+To catch bad patterns before they reach your cache or backend responses, dry-run them the same way `translateHtml()` consumes them. Both methods return an `IcuValidationResult` (`->valid`, `->format`, `->error`, `->output`):
+
+```php
+use AutoHtmlI18n\VariableInfo;
+use AutoHtmlI18n\VariableType;
+
+$r = $i18n->validateIcu(
+    '{0, plural, one {# oveja} other {# ovejas}}',
+    [new VariableInfo('5', VariableType::Number)],
+);
+// $r->valid === true, $r->format === TranslationFormat::Icu, $r->output === '5 ovejas'
+
+// Or derive the variables from a source string, using the instance's ignoreWords config:
+$r = $i18n->validateTranslation('John has 3 cats', '{{0}} tiene {{1}} gatos');
+```
+
+`format` reports how the string will be consumed — `icu` (single-brace `{0}`), `simple` (double-brace `{{0}}` substitution), or `plain` — check it matches your intent. Invalid results carry an engine-specific `error` (malformed pattern, unfilled arguments, out-of-range `{{N}}` index).
 
 ## What's deliberately different from the JS package
 

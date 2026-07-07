@@ -6,6 +6,7 @@ namespace AutoHtmlI18n\Tests;
 
 use AutoHtmlI18n\CasePattern;
 use AutoHtmlI18n\Masker;
+use AutoHtmlI18n\TranslationFormat;
 use AutoHtmlI18n\VariableInfo;
 use AutoHtmlI18n\VariableType;
 use PHPUnit\Framework\TestCase;
@@ -238,6 +239,103 @@ final class MaskerTest extends TestCase
             '5 sheep',
         );
         self::assertSame('5 ovejas', $out);
+    }
+
+    public function testValidateIcuValidPlural(): void
+    {
+        $m = $this->masker();
+        $r = $m->validateIcu(
+            '{0, plural, one {# oveja} other {# ovejas}}',
+            [new VariableInfo('5', VariableType::Number)],
+            'es',
+        );
+        self::assertTrue($r->valid);
+        self::assertSame(TranslationFormat::Icu, $r->format);
+        self::assertSame('5 ovejas', $r->output);
+        self::assertNull($r->error);
+    }
+
+    public function testValidateIcuMalformedPattern(): void
+    {
+        $m = $this->masker();
+        $r = $m->validateIcu('{0, plural, {broken}', [new VariableInfo('5', VariableType::Number)], 'es');
+        self::assertFalse($r->valid);
+        self::assertSame(TranslationFormat::Icu, $r->format);
+        self::assertNotNull($r->error);
+        self::assertNull($r->output);
+    }
+
+    public function testValidateIcuMissingVariableNamesTheArgument(): void
+    {
+        $m = $this->masker();
+        $r = $m->validateIcu('{0} tiene {1} gatos', [new VariableInfo('John', VariableType::IgnoreWord)], 'es');
+        self::assertFalse($r->valid);
+        self::assertStringContainsString('{1}', (string) $r->error);
+    }
+
+    public function testValidateIcuSimpleSubstitution(): void
+    {
+        $m = $this->masker();
+        $r = $m->validateIcu(
+            '{{0}} tiene {{1}} gatos',
+            [new VariableInfo('John', VariableType::IgnoreWord), new VariableInfo('3', VariableType::Number)],
+            'es',
+        );
+        self::assertTrue($r->valid);
+        self::assertSame(TranslationFormat::Simple, $r->format);
+        self::assertSame('John tiene 3 gatos', $r->output);
+    }
+
+    public function testValidateIcuSimpleOutOfRangeIndex(): void
+    {
+        $m = $this->masker();
+        $r = $m->validateIcu('Hola {{2}}', [new VariableInfo('John', VariableType::IgnoreWord)], 'es');
+        self::assertFalse($r->valid);
+        self::assertSame(TranslationFormat::Simple, $r->format);
+        self::assertStringContainsString('{{2}}', (string) $r->error);
+    }
+
+    public function testValidateIcuPlainText(): void
+    {
+        $m = $this->masker();
+        $r = $m->validateIcu('Hola mundo', [], 'es');
+        self::assertTrue($r->valid);
+        self::assertSame(TranslationFormat::Plain, $r->format);
+        self::assertSame('Hola mundo', $r->output);
+    }
+
+    public function testValidateTranslationDerivesVariablesFromOriginal(): void
+    {
+        $m = $this->masker(['John']);
+        $r = $m->validateTranslation('John has 3 cats', '{{0}} tiene {{1}} gatos', 'es');
+        self::assertTrue($r->valid);
+        self::assertSame(TranslationFormat::Simple, $r->format);
+        self::assertSame('John tiene 3 gatos', $r->output);
+    }
+
+    public function testValidateTranslationRejectsMissingVariableReference(): void
+    {
+        $m = $this->masker(['John']);
+        $r = $m->validateTranslation('John has 3 cats', '{0} tiene {2} gatos', 'es');
+        self::assertFalse($r->valid);
+        self::assertSame(TranslationFormat::Icu, $r->format);
+        self::assertNotNull($r->error);
+    }
+
+    public function testValidateTranslationRestoresTagAttributes(): void
+    {
+        $m = $this->masker();
+        $r = $m->validateTranslation('Click <a href="/x">here</a>', 'Clic <a0>aquí</a0>', 'es');
+        self::assertTrue($r->valid);
+        self::assertSame('Clic <a href="/x">aquí</a>', $r->output);
+    }
+
+    public function testValidateTranslationAppliesCaseAndWhitespace(): void
+    {
+        $m = $this->masker();
+        $r = $m->validateTranslation('  CLICK HERE ', 'haz clic aquí', 'es');
+        self::assertTrue($r->valid);
+        self::assertSame('  HAZ CLIC AQUÍ ', $r->output);
     }
 
     public function testIcuMissingArgFallsBackToOriginalWhenProvided(): void

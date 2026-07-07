@@ -285,6 +285,26 @@ final class I18nTranslator
     }
 
     /**
+     * Dry-runs a translation string against the given variables, exactly as
+     * translateHtml() would consume it. Defaults to the instance locale.
+     *
+     * @param VariableInfo[] $variables
+     */
+    public function validateIcu(string $translated, array $variables = [], ?string $locale = null): IcuValidationResult
+    {
+        return $this->masker->validateIcu($translated, $variables, $locale ?? $this->locale);
+    }
+
+    /**
+     * Masks $original with this instance's config (ignoreWords, inline tags) to
+     * derive its variables, then validates $translated against them.
+     */
+    public function validateTranslation(string $original, string $translated, ?string $locale = null): IcuValidationResult
+    {
+        return $this->masker->validateTranslation($original, $translated, $locale ?? $this->locale);
+    }
+
+    /**
      * @return string|array<string,string>|null
      */
     public function getTranslation(string $key, ?string $locale = null): string|array|null

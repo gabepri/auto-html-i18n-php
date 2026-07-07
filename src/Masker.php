@@ -8,6 +8,16 @@ use MessageFormatter;
 
 final class Masker
 {
+    /**
+     * Invisible bidi formatting characters (marks, embeddings, isolates).
+     * Stripped during masking so a key stays stable when already-translated
+     * (isolate-wrapped) content is re-masked.
+     */
+    private const BIDI_CONTROLS = '/[\x{061C}\x{200E}\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}]/u';
+
+    private const FSI = "\u{2068}"; // FIRST STRONG ISOLATE
+    private const PDI = "\u{2069}"; // POP DIRECTIONAL ISOLATE
+
     /** @var IgnoreWordEntry[] */
     private array $ignoreWords;
 
@@ -35,6 +45,7 @@ final class Masker
 
     public function mask(string $text): MaskResult
     {
+        $text = preg_replace(self::BIDI_CONTROLS, '', $text) ?? $text;
         if ($text === '') {
             return new MaskResult('', [], [], CasePattern::Lower, '', '');
         }
@@ -210,11 +221,17 @@ final class Masker
                 $result = $translated;
             }
         } else {
+            $isolate = $locale !== null && TextDirection::forLocale($locale) === TextDirection::Rtl;
             $result = preg_replace_callback(
                 '/\{\{(\d+)\}\}/',
-                function (array $m) use ($variables): string {
-                    $idx = (int) $m[1];
-                    return $variables[$idx]->value ?? '{{' . $m[1] . '}}';
+                function (array $m) use ($variables, $isolate): string {
+                    $variable = $variables[(int) $m[1]] ?? null;
+                    if ($variable === null) {
+                        return '{{' . $m[1] . '}}';
+                    }
+                    return $isolate && self::isBidiIsolated($variable->type)
+                        ? self::FSI . $variable->value . self::PDI
+                        : $variable->value;
                 },
                 $translated,
             );
@@ -246,15 +263,19 @@ final class Masker
             }
         } elseif ($format === TranslationFormat::Simple) {
             $missing = [];
+            $isolate = TextDirection::forLocale($locale) === TextDirection::Rtl;
             $output = preg_replace_callback(
                 '/\{\{(\d+)\}\}/',
-                function (array $m) use ($variables, &$missing): string {
+                function (array $m) use ($variables, $isolate, &$missing): string {
                     $idx = (int) $m[1];
                     if (!isset($variables[$idx])) {
                         $missing[$m[0]] = true;
                         return $m[0];
                     }
-                    return $variables[$idx]->value;
+                    $variable = $variables[$idx];
+                    return $isolate && self::isBidiIsolated($variable->type)
+                        ? self::FSI . $variable->value . self::PDI
+                        : $variable->value;
                 },
                 $translated,
             );
@@ -295,6 +316,15 @@ final class Masker
             . $this->applyCasePattern($result->output, $maskResult->casePattern)
             . $maskResult->trailingWhitespace;
         return new IcuValidationResult(true, $result->format, null, $output);
+    }
+
+    /**
+     * Variable types wrapped in FSI…PDI when substituted into RTL output.
+     * Comments are markup and symbols are direction-neutral, so neither is isolated.
+     */
+    private static function isBidiIsolated(VariableType $type): bool
+    {
+        return $type !== VariableType::Symbol && $type !== VariableType::Comment;
     }
 
     /**

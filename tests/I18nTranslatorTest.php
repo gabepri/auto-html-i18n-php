@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AutoHtmlI18n\Tests;
 
 use AutoHtmlI18n\I18nTranslator;
+use AutoHtmlI18n\TextDirection;
 use AutoHtmlI18n\TranslationItem;
 use AutoHtmlI18n\VariableInfo;
 use AutoHtmlI18n\VariableType;
@@ -34,6 +35,22 @@ final class I18nTranslatorTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
         new I18nTranslator(['locale' => 'es']);
+    }
+
+    public function testGetDirectionUsesInstanceLocaleByDefault(): void
+    {
+        $i = $this->make(['locale' => 'he-IL']);
+        self::assertSame(TextDirection::Rtl, $i->getDirection());
+        self::assertSame(TextDirection::Ltr, $i->getDirection('en-US'));
+        self::assertSame(TextDirection::Rtl, $i->getDirection('ar'));
+    }
+
+    public function testGetDirectionFollowsSetLocale(): void
+    {
+        $i = $this->make(['locale' => 'es']);
+        self::assertSame(TextDirection::Ltr, $i->getDirection());
+        $i->setLocale('he-IL');
+        self::assertSame(TextDirection::Rtl, $i->getDirection());
     }
 
     public function testTranslateLooksUpPreMaskedKey(): void

@@ -85,6 +85,10 @@ $i18n->validateTranslation(string $original, string $translated, ?string $locale
 $i18n->getLocale(): string
 $i18n->setLocale(string $locale): void
 
+// Writing direction of a locale ('ltr'|'rtl' backed enum), defaulting to the
+// instance locale. See "RTL support" below.
+$i18n->getDirection(?string $locale = null): TextDirection
+
 // Cache management
 $i18n->setCache(string $locale, array $entries): void
 $i18n->getCache(?string $locale = null): array
@@ -152,6 +156,23 @@ $r = $i18n->validateTranslation('John has 3 cats', '{{0}} tiene {{1}} gatos');
 
 `format` reports how the string will be consumed — `icu` (single-brace `{0}`), `simple` (double-brace `{{0}}` substitution), or `plain` — check it matches your intent. Invalid results carry an engine-specific `error` (malformed pattern, unfilled arguments, out-of-range `{{N}}` index).
 
+## RTL support
+
+Right-to-left locales (Hebrew, Arabic, Persian, Urdu, …) work out of the box.
+
+**Document direction.** The server owns the markup, so set `dir`/`lang` yourself using `getDirection()`. Direction is resolved from the locale tag: the language subtag decides (`he`, `ar`, `fa`, `ur`, …) and an explicit script subtag overrides it (`az-Arab` → rtl, `ar-Latn` → ltr). `TextDirection::forLocale()` is also available statically.
+
+```php
+$i18n = new I18nTranslator(['locale' => 'he-IL', /* ... */]);
+
+echo '<html dir="' . $i18n->getDirection()->value . '" lang="' . $i18n->getLocale() . '">';
+// <html dir="rtl" lang="he-IL">
+```
+
+**Bidi isolation of variables.** When the target locale is RTL, values re-injected into `{{N}}` placeholders — numbers, dates, URLs, emails, and ignoreWords (typically Latin brand names) — are wrapped in Unicode *first-strong isolate* characters (U+2068…U+2069). Without this, the bidi algorithm can visually scramble LTR fragments inside an RTL sentence (e.g. a date like `12/31/2024` rendering reversed). The isolates are invisible, carried into the output HTML, and stripped again during masking, so cache keys stay stable.
+
+Isolation applies to simple `{{N}}` substitution (and `validateIcu`/`validateTranslation` output). ICU patterns are rendered by the ICU engine as-is — add directional marks inside the pattern if a specific argument needs them.
+
 ## What's deliberately different from the JS package
 
 | | JS (browser) | PHP (server) |
@@ -162,6 +183,7 @@ $r = $i18n->validateTranslation('John has 3 cats', '{{0}} tiene {{1}} gatos');
 | Re-render on locale change | Re-walks the DOM in place | Caller re-runs `translateHtml()` on cached source |
 | ICU locale handling | `Intl` strictly validates BCP 47 tags; ill-formed locales degrade stepwise (`es-41` → `es` → `und`) so the translation still renders. `und` resolves to the runtime's default locale. | ICU accepts any locale id natively (`es-41`, `es_419`, even garbage) and resolves through its own fallback chain, ending at ICU's **root** locale. Both ports always render; only the plural rules chosen for a *wholly* invalid locale can differ (runtime default vs. root). |
 | Output-side bookkeeping attributes | `data-i18n-original` / `data-i18n-pending` written to elements | Not used (single-pass output) |
+| Document direction (RTL) | Optional `manageDirection` config keeps `dir`/`lang` on the live document in sync | Caller embeds `getDirection()` into the markup it renders |
 
 Both ports honor the same `data-i18n-*` input attributes (`-key`, `-scope`, `-ignore`).
 

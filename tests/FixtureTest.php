@@ -6,6 +6,7 @@ namespace AutoHtmlI18n\Tests;
 
 use AutoHtmlI18n\CasePattern;
 use AutoHtmlI18n\Masker;
+use AutoHtmlI18n\TextDirection;
 use AutoHtmlI18n\VariableInfo;
 use AutoHtmlI18n\VariableType;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -216,6 +217,42 @@ final class FixtureTest extends TestCase
                     (string) ($case['locale'] ?? 'en'),
                     (array) ($case['config'] ?? []),
                     (array) ($case['expected'] ?? []),
+                ];
+            }
+        }
+    }
+
+    #[DataProvider('directionFixtureProvider')]
+    public function testDirectionFixture(string $name, string $locale, string $expected): void
+    {
+        self::assertSame($expected, TextDirection::forLocale($locale)->value, "direction mismatch for: $name");
+    }
+
+    /**
+     * @return iterable<string,array{0:string,1:string,2:string}>
+     */
+    public static function directionFixtureProvider(): iterable
+    {
+        $dir = realpath(__DIR__ . '/../../../fixtures/direction');
+        if ($dir === false) {
+            throw new \RuntimeException('fixtures/direction directory not found');
+        }
+        $files = glob($dir . '/*.json') ?: [];
+        sort($files);
+        foreach ($files as $file) {
+            $base = basename($file);
+            $contents = file_get_contents($file);
+            if ($contents === false) {
+                continue;
+            }
+            /** @var array<int,array<string,mixed>> $cases */
+            $cases = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+            foreach ($cases as $case) {
+                $name = $base . ': ' . ($case['name'] ?? '(unnamed)');
+                yield $name => [
+                    $name,
+                    (string) ($case['locale'] ?? ''),
+                    (string) ($case['expected'] ?? ''),
                 ];
             }
         }

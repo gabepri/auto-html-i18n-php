@@ -264,6 +264,15 @@ final class I18nTranslator
     }
 
     /**
+     * Writing direction of the given locale, defaulting to the instance locale.
+     * Use it to emit e.g. <html dir="..." lang="...">.
+     */
+    public function getDirection(?string $locale = null): TextDirection
+    {
+        return TextDirection::forLocale($locale ?? $this->locale);
+    }
+
+    /**
      * @param array<string,string|array<string,string>> $data
      */
     public function setCache(string $locale, array $data): void

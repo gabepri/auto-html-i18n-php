@@ -160,6 +160,7 @@ $r = $i18n->validateTranslation('John has 3 cats', '{{0}} tiene {{1}} gatos');
 | `onMissingTranslation` | Async, possibly many calls (debounced/batched) | Sync, exactly one call per `translateHtml()` |
 | Pending state | Yes — text is replaced when async callback resolves | No — translation always completes before serialization |
 | Re-render on locale change | Re-walks the DOM in place | Caller re-runs `translateHtml()` on cached source |
+| ICU locale handling | `Intl` strictly validates BCP 47 tags; ill-formed locales degrade stepwise (`es-41` → `es` → `und`) so the translation still renders. `und` resolves to the runtime's default locale. | ICU accepts any locale id natively (`es-41`, `es_419`, even garbage) and resolves through its own fallback chain, ending at ICU's **root** locale. Both ports always render; only the plural rules chosen for a *wholly* invalid locale can differ (runtime default vs. root). |
 | Output-side bookkeeping attributes | `data-i18n-original` / `data-i18n-pending` written to elements | Not used (single-pass output) |
 
 Both ports honor the same `data-i18n-*` input attributes (`-key`, `-scope`, `-ignore`).

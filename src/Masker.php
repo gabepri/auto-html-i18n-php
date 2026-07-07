@@ -390,6 +390,12 @@ final class Masker
         if ($result === false) {
             return null;
         }
+        // ICU renders missing arguments as literal {N}/{N_key} placeholders and
+        // still reports success — treat any survivor as an evaluation failure.
+        // Checked before tag restoration so tag content cannot false-positive.
+        if (preg_match('/\{\d+(_\w+)?\}/', $result) === 1) {
+            return null;
+        }
         foreach ($tagPlaceholders as [$ph, $orig]) {
             $result = str_replace($ph, $orig, $result);
         }

@@ -153,6 +153,19 @@ final class I18nTranslatorTest extends TestCase
         self::assertStringNotContainsString('plural', $out);
     }
 
+    public function testTranslateHtmlFallsBackWhenIcuReferencesMissingVariable(): void
+    {
+        // Backend returned a pattern indexing a variable that doesn't exist ({2});
+        // ICU would render a literal "{2}" — the original text must win instead
+        $i = $this->make([
+            'initialCache' => ['{{0}} has {{1}} cats' => '{0} tiene {2} gatos'],
+            'ignoreWords' => ['John'],
+        ]);
+        $out = $i->translateHtml('<p>John has 3 cats</p>');
+        self::assertStringContainsString('John has 3 cats', $out);
+        self::assertStringNotContainsString('{2}', $out);
+    }
+
     public function testTranslateHtmlPreservesAllCaps(): void
     {
         $i = $this->make([

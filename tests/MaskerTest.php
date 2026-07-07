@@ -240,6 +240,60 @@ final class MaskerTest extends TestCase
         self::assertSame('5 ovejas', $out);
     }
 
+    public function testIcuMissingArgFallsBackToOriginalWhenProvided(): void
+    {
+        $m = $this->masker();
+        // Pattern references {1} but only one variable exists — ICU renders a
+        // literal {1} and reports success; treat that as evaluation failure
+        $out = $m->unmask(
+            '{0} tiene {1} gatos',
+            [new VariableInfo('John', VariableType::IgnoreWord)],
+            [],
+            'es',
+            'John has cats',
+        );
+        self::assertSame('John has cats', $out);
+    }
+
+    public function testIcuMissingPluralArgFallsBackToOriginalWhenProvided(): void
+    {
+        $m = $this->masker();
+        $out = $m->unmask(
+            '{1, plural, one {# oveja} other {# ovejas}}',
+            [new VariableInfo('5', VariableType::Number)],
+            [],
+            'es',
+            '5 sheep',
+        );
+        self::assertSame('5 sheep', $out);
+    }
+
+    public function testIcuMissingMetadataArgFallsBackToOriginalWhenProvided(): void
+    {
+        $m = $this->masker();
+        // The variable carries no gender metadata, but the pattern selects on {0_gender}
+        $out = $m->unmask(
+            '{0_gender, select, female {ella compró} other {él compró}}',
+            [new VariableInfo('Mary', VariableType::IgnoreWord)],
+            [],
+            'es',
+            'Mary bought it',
+        );
+        self::assertSame('Mary bought it', $out);
+    }
+
+    public function testIcuMissingArgWithoutOriginalFallsBackToRawPattern(): void
+    {
+        $m = $this->masker();
+        $out = $m->unmask(
+            '{0} tiene {1} gatos',
+            [new VariableInfo('John', VariableType::IgnoreWord)],
+            [],
+            'es',
+        );
+        self::assertSame('{0} tiene {1} gatos', $out);
+    }
+
     public function testGetIgnoreWordsReturnsSortedLongestFirst(): void
     {
         $m = $this->masker(['Al', 'Alice', 'A']);

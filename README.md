@@ -125,7 +125,7 @@ Translations may use [ICU MessageFormat](https://unicode-org.github.io/icu/userg
 
 When an ignoreWord carries metadata (e.g. `['word' => 'Mary', 'meta' => ['gender' => 'female']]`), that metadata is exposed to ICU as `{N_key}` arguments — letting translations branch on `{0_gender, select, female {...} other {...}}`.
 
-If an ICU pattern fails to parse or evaluate, the affected text falls back to its original untranslated source — the raw pattern is never rendered into the output HTML.
+If an ICU pattern fails to parse or evaluate — including when it references a variable index or metadata key that doesn't exist (PHP's `MessageFormatter` would otherwise render a literal `{1}` and report success) — the affected text falls back to its original untranslated source. Neither the raw pattern nor unfilled placeholders are ever rendered into the output HTML.
 
 ## What's deliberately different from the JS package
 

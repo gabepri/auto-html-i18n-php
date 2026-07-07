@@ -43,9 +43,12 @@ Before lookup, each translatable string is normalized into a stable key with dyn
 | `You have 5 apples` | `You have {{0}} apples` | `[{value: "5", type: "number"}]` |
 | `Visit https://acme.com` | `Visit {{0}}` | `[{value: "https://acme.com", type: "url"}]` |
 | `Click <a href="/x">here</a>` | `Click <a0>here</a0>` | `[]` (tag attrs preserved separately) |
+| `See <svg id="x9">…</svg> now` | `See {{0}}…{{1}} now` | `[{value: "<svg id=\"x9\">", type: "markup"}, …]` |
 | `HELLO WORLD` | `hello world` | (case is restored on output) |
 
 This means **you only translate the abstract sentence shape once** — `You have {{0}} apples` works for any number — and your translations don't have to know about specific values.
+
+Tags outside `allowedInlineTags` (an `<input>`, `<svg>`, `<div>`, …) are captured as opaque `markup` variables instead of being left in the key — so their volatile attributes (random ids, gradient refs) never destabilize the cache key, and the original markup is restored verbatim on output. Nested same-name inline tags (`<span><span>…</span></span>`) are matched opener-to-closer by a stack, so their indices never cross.
 
 ## API
 

@@ -244,22 +244,41 @@ final class HtmlWalker
 
     private function hasInlineChildElements(DOMElement $element): bool
     {
-        $hasInline = false;
         $childCount = 0;
+        // Every child — and its entire subtree — must be inline-allowed. A non-inline
+        // element anywhere below (e.g. an <input> or <svg> nested in an otherwise
+        // inline <span>) means this isn't a formatted run of text; aggregating it
+        // would drag non-translatable markup into the cache key.
         foreach ($element->childNodes as $child) {
             if ($child instanceof DOMElement) {
                 $childCount++;
-                if (!isset($this->allowedInlineTags[strtolower($child->nodeName)])) {
-                    return false; // non-inline child — don't aggregate
+                if (!$this->isFullyInline($child)) {
+                    return false;
                 }
-                $hasInline = true;
             }
         }
-        // Wrapper around a single inline child with no surrounding text — not an aggregation candidate
-        if ($hasInline && $childCount === 1 && !$this->hasDirectTextContent($element)) {
+        if ($childCount === 0) {
             return false;
         }
-        return $hasInline;
+        // Wrapper around a single inline child with no surrounding text — not an aggregation candidate
+        if ($childCount === 1 && !$this->hasDirectTextContent($element)) {
+            return false;
+        }
+        return true;
+    }
+
+    /** True when $element and all of its descendant elements are allowed inline tags. */
+    private function isFullyInline(DOMElement $element): bool
+    {
+        if (!isset($this->allowedInlineTags[strtolower($element->nodeName)])) {
+            return false;
+        }
+        foreach ($element->childNodes as $child) {
+            if ($child instanceof DOMElement && !$this->isFullyInline($child)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private function hasDirectTextContent(DOMElement $element): bool

@@ -50,51 +50,52 @@ final class Masker
             return new MaskResult('', [], [], CasePattern::Lower, '', '');
         }
 
-        // Phase 1: Normalize inline tags (strip attributes, assign indices)
+        // Phase 1: Normalize allowed inline tags — strip attributes, assign indices,
+        // and match each closing tag to its opener via a stack (so nested same-name
+        // tags like <span><span></span></span> keep their pairing). Non-allowed tags
+        // are left raw here; phase 2 masks them as opaque `markup` variables.
         /** @var array<string,array<string,string>> $tagAttributes */
         $tagAttributes = [];
         /** @var array<string,int> $tagCounters */
         $tagCounters = [];
+        /** @var string[] $openStack — tag keys (e.g. "span0") of still-open tags */
+        $openStack = [];
 
-        // Opening tags
         $tagProcessed = preg_replace_callback(
-            '/<(\w+)(\s[^>]*)?\s*>/',
-            function (array $m) use (&$tagAttributes, &$tagCounters): string {
-                $tagName = $m[1];
-                $attrString = $m[2] ?? '';
-                $lower = strtolower($tagName);
+            '/<(\/)?([a-zA-Z][\w-]*)((?:\s[^>]*?)?)\s*(\/)?>/',
+            function (array $m) use (&$tagAttributes, &$tagCounters, &$openStack): string {
+                $closing = ($m[1] ?? '') !== '';
+                $lower = strtolower($m[2]);
+                $attrString = $m[3] ?? '';
+                $selfClosing = ($m[4] ?? '') !== '';
                 if (!isset($this->allowedInlineTags[$lower])) {
-                    return $m[0];
+                    return $m[0]; // non-allowed — leave raw for phase 2 to mask as markup
                 }
+                if ($selfClosing) {
+                    return $m[0]; // self-closing has no pair; treat as opaque markup in phase 2
+                }
+                if ($closing) {
+                    // Match to the nearest unclosed opener of the same tag name.
+                    for ($s = count($openStack) - 1; $s >= 0; $s--) {
+                        if (preg_replace('/\d+$/', '', $openStack[$s]) === $lower) {
+                            $tagKey = $openStack[$s];
+                            array_splice($openStack, $s, 1);
+                            return '</' . $tagKey . '>';
+                        }
+                    }
+                    return $m[0]; // unmatched close — leave raw (phase 2 → markup)
+                }
+
                 $count = $tagCounters[$lower] ?? 0;
                 $tagCounters[$lower] = $count + 1;
                 $tagKey = $lower . $count;
 
                 $attrs = self::parseAttributes($attrString);
                 $tagAttributes[$tagKey] = $attrs;
+                $openStack[] = $tagKey;
                 return '<' . $tagKey . '>';
             },
             $text,
-        );
-        if (!is_string($tagProcessed)) {
-            $tagProcessed = $text;
-        }
-
-        // Closing tags
-        /** @var array<string,int> $closingTagCounters */
-        $closingTagCounters = [];
-        $tagProcessed = preg_replace_callback(
-            '#</(\w+)\s*>#',
-            function (array $m) use (&$closingTagCounters): string {
-                $lower = strtolower($m[1]);
-                if (!isset($this->allowedInlineTags[$lower])) {
-                    return $m[0];
-                }
-                $count = $closingTagCounters[$lower] ?? 0;
-                $closingTagCounters[$lower] = $count + 1;
-                return '</' . $lower . $count . '>';
-            },
-            $tagProcessed,
         );
         if (!is_string($tagProcessed)) {
             $tagProcessed = $text;
@@ -122,11 +123,20 @@ final class Masker
                 }
             }
 
-            // Skip past tag contents — copy verbatim
+            // Handle a tag: a normalized allowed-tag marker (<span0>, </span0>) is copied
+            // verbatim; anything else is a non-allowed tag masked as an opaque markup
+            // variable so its (possibly volatile) attributes never enter the cache key.
             if ($tagProcessed[$i] === '<') {
                 $closeIdx = strpos($tagProcessed, '>', $i);
                 if ($closeIdx !== false) {
-                    $masked .= substr($tagProcessed, $i, $closeIdx + 1 - $i);
+                    $tagText = substr($tagProcessed, $i, $closeIdx + 1 - $i);
+                    if (preg_match('/^<\/?([a-zA-Z][\w-]*)>$/', $tagText, $mm) === 1 && isset($tagAttributes[$mm[1]])) {
+                        $masked .= $tagText;
+                    } else {
+                        $idx = count($variables);
+                        $variables[] = new VariableInfo($tagText, VariableType::Markup);
+                        $masked .= '{{' . $idx . '}}';
+                    }
                     $i = $closeIdx + 1;
                     continue;
                 }
@@ -206,9 +216,15 @@ final class Masker
         }
 
         $format = $this->detectFormat($translated);
+        // Markup variables (the page's own non-allowed tags, captured at mask time)
+        // are held as sentinels through sanitization and restored verbatim last, so
+        // sanitizeTags never escapes them while still escaping any tags the
+        // translation itself introduced.
+        /** @var array<int,array{0:string,1:string}> $markupSentinels */
+        $markupSentinels = [];
 
         if ($format === TranslationFormat::Icu && $locale !== null) {
-            $result = $this->evaluateICU($translated, $variables, $locale);
+            $result = $this->evaluateICU($translated, $variables, $locale, $markupSentinels);
             if ($result === null) {
                 if ($original !== null) {
                     // Fall back to the untranslated source text. It needs no tag
@@ -224,10 +240,13 @@ final class Masker
             $isolate = $locale !== null && TextDirection::forLocale($locale) === TextDirection::Rtl;
             $result = preg_replace_callback(
                 '/\{\{(\d+)\}\}/',
-                function (array $m) use ($variables, $isolate): string {
+                function (array $m) use ($variables, $isolate, &$markupSentinels): string {
                     $variable = $variables[(int) $m[1]] ?? null;
                     if ($variable === null) {
                         return '{{' . $m[1] . '}}';
+                    }
+                    if ($variable->type === VariableType::Markup) {
+                        return self::markupSentinel($variable->value, $markupSentinels);
                     }
                     return $isolate && self::isBidiIsolated($variable->type)
                         ? self::FSI . $variable->value . self::PDI
@@ -241,7 +260,33 @@ final class Masker
         $result = $this->restoreTagAttributes($result, $tagAttributes);
 
         // Sanitize: escape any HTML tags not in the allowlist
-        return $this->sanitizeTags($result);
+        $result = $this->sanitizeTags($result);
+
+        // Restore markup variables verbatim (they bypass sanitization)
+        return self::restoreMarkup($result, $markupSentinels);
+    }
+
+    /**
+     * Records a markup value under a sanitize-proof sentinel and returns the sentinel.
+     *
+     * @param array<int,array{0:string,1:string}> $out
+     */
+    private static function markupSentinel(string $value, array &$out): string
+    {
+        $sentinel = "\u{FFFD}MK" . count($out) . "\u{FFFD}";
+        $out[] = [$sentinel, $value];
+        return $sentinel;
+    }
+
+    /**
+     * @param array<int,array{0:string,1:string}> $sentinels
+     */
+    private static function restoreMarkup(string $text, array $sentinels): string
+    {
+        foreach ($sentinels as [$sentinel, $value]) {
+            $text = str_replace($sentinel, $value, $text);
+        }
+        return $text;
     }
 
     /**
@@ -255,9 +300,11 @@ final class Masker
     public function validateIcu(string $translated, array $variables, string $locale, array $tagAttributes = []): IcuValidationResult
     {
         $format = $this->detectFormat($translated);
+        /** @var array<int,array{0:string,1:string}> $markupSentinels */
+        $markupSentinels = [];
 
         if ($format === TranslationFormat::Icu) {
-            [$output, $error] = $this->evaluateICUDetailed($translated, $variables, $locale);
+            [$output, $error] = $this->evaluateICUDetailed($translated, $variables, $locale, $markupSentinels);
             if ($output === null) {
                 return new IcuValidationResult(false, $format, $error ?? 'ICU evaluation failed');
             }
@@ -266,13 +313,16 @@ final class Masker
             $isolate = TextDirection::forLocale($locale) === TextDirection::Rtl;
             $output = preg_replace_callback(
                 '/\{\{(\d+)\}\}/',
-                function (array $m) use ($variables, $isolate, &$missing): string {
+                function (array $m) use ($variables, $isolate, &$missing, &$markupSentinels): string {
                     $idx = (int) $m[1];
                     if (!isset($variables[$idx])) {
                         $missing[$m[0]] = true;
                         return $m[0];
                     }
                     $variable = $variables[$idx];
+                    if ($variable->type === VariableType::Markup) {
+                        return self::markupSentinel($variable->value, $markupSentinels);
+                    }
                     return $isolate && self::isBidiIsolated($variable->type)
                         ? self::FSI . $variable->value . self::PDI
                         : $variable->value;
@@ -296,6 +346,7 @@ final class Masker
             $output = $this->restoreTagAttributes($output, $tagAttributes);
         }
         $output = $this->sanitizeTags($output);
+        $output = self::restoreMarkup($output, $markupSentinels);
 
         return new IcuValidationResult(true, $format, null, $output);
     }
@@ -324,7 +375,9 @@ final class Masker
      */
     private static function isBidiIsolated(VariableType $type): bool
     {
-        return $type !== VariableType::Symbol && $type !== VariableType::Comment;
+        return $type !== VariableType::Symbol
+            && $type !== VariableType::Comment
+            && $type !== VariableType::Markup;
     }
 
     /**
@@ -476,16 +529,21 @@ final class Masker
     /**
      * @param VariableInfo[] $variables
      */
-    private function evaluateICU(string $pattern, array $variables, string $locale): ?string
+    /**
+     * @param VariableInfo[] $variables
+     * @param array<int,array{0:string,1:string}> $markupOut
+     */
+    private function evaluateICU(string $pattern, array $variables, string $locale, array &$markupOut = []): ?string
     {
-        return $this->evaluateICUDetailed($pattern, $variables, $locale)[0];
+        return $this->evaluateICUDetailed($pattern, $variables, $locale, $markupOut)[0];
     }
 
     /**
      * @param VariableInfo[] $variables
+     * @param array<int,array{0:string,1:string}> $markupOut
      * @return array{0:?string,1:?string} [output, error] — exactly one is non-null
      */
-    private function evaluateICUDetailed(string $pattern, array $variables, string $locale): array
+    private function evaluateICUDetailed(string $pattern, array $variables, string $locale, array &$markupOut = []): array
     {
         // Temporarily replace HTML tags so they don't confuse the ICU parser.
         $tagPlaceholders = [];
@@ -504,8 +562,13 @@ final class Masker
 
         $args = [];
         foreach ($variables as $i => $vi) {
-            // ICU plural/select rules need numeric values for proper evaluation
-            $args[(string) $i] = $vi->type === VariableType::Number ? (float) $vi->value : $vi->value;
+            if ($vi->type === VariableType::Markup) {
+                // Hold markup behind a sanitize-proof sentinel; restored verbatim by the caller.
+                $args[(string) $i] = self::markupSentinel($vi->value, $markupOut);
+            } else {
+                // ICU plural/select rules need numeric values for proper evaluation
+                $args[(string) $i] = $vi->type === VariableType::Number ? (float) $vi->value : $vi->value;
+            }
             if ($vi->meta !== null) {
                 foreach ($vi->meta as $k => $v) {
                     $args[$i . '_' . $k] = $v;

@@ -296,6 +296,32 @@ final class I18nTranslatorTest extends TestCase
         }
     }
 
+    public function testTranslateHtmlDoesNotAggregateWhenDeepDescendantIsNonInline(): void
+    {
+        // FormKit checkbox option: the wrapper's direct children are both <span>
+        // (inline-allowed), but one span contains an <input>/<svg> subtree. The
+        // clean label must be offered on its own, never the svg/input blob.
+        $captured = [];
+        $i = $this->make([
+            'onMissingTranslation' => function (array $items, string $locale) use (&$captured): array {
+                $captured = $items;
+                return [];
+            },
+        ]);
+        $i->translateHtml(
+            '<label class="fk-wrapper"><span class="fk-inner">'
+            . '<input type="checkbox" value="Environmental">'
+            . '<span class="fk-decorator"><span class="fk-icon"><svg viewBox="0 0 24 24"><path d="m10 14"></path></svg></span></span>'
+            . '</span><span class="fk-label">Environmental</span></label>'
+        );
+        $masks = array_map(fn(TranslationItem $it) => $it->masked, $captured);
+        self::assertContains('Environmental', $masks);
+        foreach ($masks as $m) {
+            self::assertStringNotContainsString('<svg', $m);
+            self::assertStringNotContainsString('<input', $m);
+        }
+    }
+
     public function testTranslateHtmlSkipsDataI18nIgnoreAttribute(): void
     {
         $captured = [];

@@ -13,4 +13,5 @@ enum VariableType: string
     case Email = 'email';
     case Symbol = 'symbol';
     case Comment = 'comment';
+    case Markup = 'markup';
 }

@@ -6,6 +6,8 @@ namespace AutoHtmlI18n\Tests;
 
 use AutoHtmlI18n\CasePattern;
 use AutoHtmlI18n\Masker;
+use AutoHtmlI18n\VariableInfo;
+use AutoHtmlI18n\VariableType;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -70,6 +72,77 @@ final class FixtureTest extends TestCase
                     (string) ($case['input'] ?? ''),
                     (array) ($case['config'] ?? []),
                     (array) ($case['expected'] ?? []),
+                ];
+            }
+        }
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $variables
+     * @param array<string,array<string,string>> $tagAttributes
+     * @param array<string,mixed> $config
+     */
+    #[DataProvider('unmaskFixtureProvider')]
+    public function testUnmaskFixture(
+        string $name,
+        string $translated,
+        array $variables,
+        array $tagAttributes,
+        ?string $locale,
+        ?string $original,
+        array $config,
+        string $expected,
+    ): void {
+        $ignoreWords = $config['ignoreWords'] ?? [];
+        $allowedTags = $config['allowedInlineTags'] ?? self::DEFAULT_ALLOWED_TAGS;
+
+        $masker = new Masker($ignoreWords, $allowedTags);
+        $vars = array_map(
+            static fn(array $v): VariableInfo => new VariableInfo(
+                (string) $v['value'],
+                VariableType::from((string) $v['type']),
+                $v['meta'] ?? null,
+            ),
+            $variables,
+        );
+
+        self::assertSame(
+            $expected,
+            $masker->unmask($translated, $vars, $tagAttributes, $locale, $original),
+            "unmask mismatch for: $name",
+        );
+    }
+
+    /**
+     * @return iterable<string,array{0:string,1:string,2:array<int,array<string,mixed>>,3:array<string,array<string,string>>,4:?string,5:?string,6:array<string,mixed>,7:string}>
+     */
+    public static function unmaskFixtureProvider(): iterable
+    {
+        $dir = realpath(__DIR__ . '/../../../fixtures/unmask');
+        if ($dir === false) {
+            throw new \RuntimeException('fixtures/unmask directory not found');
+        }
+        $files = glob($dir . '/*.json') ?: [];
+        sort($files);
+        foreach ($files as $file) {
+            $base = basename($file);
+            $contents = file_get_contents($file);
+            if ($contents === false) {
+                continue;
+            }
+            /** @var array<int,array<string,mixed>> $cases */
+            $cases = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+            foreach ($cases as $case) {
+                $name = $base . ': ' . ($case['name'] ?? '(unnamed)');
+                yield $name => [
+                    $name,
+                    (string) ($case['translated'] ?? ''),
+                    (array) ($case['variables'] ?? []),
+                    (array) ($case['tagAttributes'] ?? []),
+                    isset($case['locale']) ? (string) $case['locale'] : null,
+                    isset($case['original']) ? (string) $case['original'] : null,
+                    (array) ($case['config'] ?? []),
+                    (string) ($case['expected'] ?? ''),
                 ];
             }
         }

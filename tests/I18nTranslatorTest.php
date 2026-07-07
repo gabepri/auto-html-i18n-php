@@ -133,6 +133,26 @@ final class I18nTranslatorTest extends TestCase
         self::assertStringContainsString('Tienes 5 manzanas', $out);
     }
 
+    public function testTranslateHtmlFallsBackToOriginalTextWhenIcuEvaluationFails(): void
+    {
+        $i = $this->make([
+            'initialCache' => ['You have {{0}} apples' => '{0, plural, {broken}'],
+        ]);
+        $out = $i->translateHtml('<p>You have 5 apples</p>');
+        self::assertStringContainsString('You have 5 apples', $out);
+        self::assertStringNotContainsString('plural', $out);
+    }
+
+    public function testTranslateHtmlFallsBackToOriginalAttributeWhenIcuEvaluationFails(): void
+    {
+        $i = $this->make([
+            'initialCache' => ['{{0}} results found' => '{0, plural, {broken}'],
+        ]);
+        $out = $i->translateHtml('<button title="10 results found"></button>');
+        self::assertStringContainsString('title="10 results found"', $out);
+        self::assertStringNotContainsString('plural', $out);
+    }
+
     public function testTranslateHtmlPreservesAllCaps(): void
     {
         $i = $this->make([

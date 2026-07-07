@@ -189,6 +189,57 @@ final class MaskerTest extends TestCase
         self::assertSame('<a href="/items">3 items</a>', $out);
     }
 
+    public function testIcuParseErrorWithoutOriginalFallsBackToRawPattern(): void
+    {
+        $m = $this->masker();
+        $out = $m->unmask(
+            '{0, plural, {broken}',
+            [new VariableInfo('5', VariableType::Number)],
+            [],
+            'en',
+        );
+        self::assertSame('{0, plural, {broken}', $out);
+    }
+
+    public function testIcuParseErrorFallsBackToOriginalWhenProvided(): void
+    {
+        $m = $this->masker();
+        $out = $m->unmask(
+            '{0, plural, {broken}',
+            [new VariableInfo('5', VariableType::Number)],
+            [],
+            'en',
+            'You have 5 items',
+        );
+        self::assertSame('You have 5 items', $out);
+    }
+
+    public function testIcuFallbackTrimsEdgeWhitespaceFromOriginal(): void
+    {
+        $m = $this->masker();
+        $out = $m->unmask(
+            '{0, plural, {broken}',
+            [new VariableInfo('5', VariableType::Number)],
+            [],
+            'en',
+            "  5 items \n",
+        );
+        self::assertSame('5 items', $out);
+    }
+
+    public function testIcuSuccessIgnoresOriginalFallback(): void
+    {
+        $m = $this->masker();
+        $out = $m->unmask(
+            '{0, plural, one {# oveja} other {# ovejas}}',
+            [new VariableInfo('5', VariableType::Number)],
+            [],
+            'es',
+            '5 sheep',
+        );
+        self::assertSame('5 ovejas', $out);
+    }
+
     public function testGetIgnoreWordsReturnsSortedLongestFirst(): void
     {
         $m = $this->masker(['Al', 'Alice', 'A']);

@@ -188,7 +188,7 @@ final class Masker
      * @param VariableInfo[] $variables
      * @param array<string,array<string,string>> $tagAttributes
      */
-    public function unmask(string $translated, array $variables, array $tagAttributes, ?string $locale = null): string
+    public function unmask(string $translated, array $variables, array $tagAttributes, ?string $locale = null, ?string $original = null): string
     {
         if ($translated === '') {
             return '';
@@ -201,6 +201,14 @@ final class Masker
         if ($isICU && $locale !== null) {
             $result = $this->evaluateICU($translated, $variables, $locale);
             if ($result === null) {
+                if ($original !== null) {
+                    // Fall back to the untranslated source text. It needs no tag
+                    // restoration or sanitizing, but is trimmed so callers can
+                    // re-apply the edge whitespace they extracted at mask time.
+                    $stripped = preg_replace('/^\s+/u', '', $original) ?? $original;
+                    return preg_replace('/\s+$/u', '', $stripped) ?? $stripped;
+                }
+                // No original available — fall back to the raw pattern
                 $result = $translated;
             }
         } else {

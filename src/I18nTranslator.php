@@ -92,13 +92,12 @@ final class I18nTranslator
             return $html;
         }
 
-        /** @var array<string,array<int,array{0:DOMElement,1:MaskResult,2:string,3:bool,4:bool,5:?string,6:?string}>> $pending */
+        /** @var array<string,array<int,array{0:DOMElement,1:MaskResult,2:string,3:bool,4:?string,5:?string}>> $pending */
         $pending = [];
         /** @var array<string,TranslationItem> $missingItems */
         $missingItems = [];
 
         $onText = function (DOMElement $element, string $text, ?string $scope, ?string $keyOverride, bool $isInnerHtml) use (&$pending, &$missingItems): void {
-            $isHtml = $isInnerHtml || preg_match('/<[^>]+>/', $text) === 1;
             $maskResult = $this->masker->mask($text);
 
             if ($keyOverride === null && !self::hasTranslatableContent($maskResult->masked)) {
@@ -111,7 +110,7 @@ final class I18nTranslator
             if ($entry !== null && $entry->status === EntryStatus::Resolved && $entry->value !== null) {
                 $resolved = Resolver::resolve($entry->value, $scope);
                 if ($resolved !== null) {
-                    $this->applyTextTranslation($element, $resolved, $maskResult, $isHtml);
+                    $this->applyTextTranslation($element, $resolved, $maskResult, $text);
                     return;
                 }
             }
@@ -122,7 +121,7 @@ final class I18nTranslator
             }
 
             // Track pending and add to missing batch (deduplicated by masked key)
-            $pending[$cacheKey][] = [$element, $maskResult, $text, $isHtml, false, null, $scope];
+            $pending[$cacheKey][] = [$element, $maskResult, $text, false, null, $scope];
             if (!isset($missingItems[$cacheKey])) {
                 $missingItems[$cacheKey] = new TranslationItem(
                     $cacheKey,
@@ -145,7 +144,7 @@ final class I18nTranslator
             if ($entry !== null && $entry->status === EntryStatus::Resolved && $entry->value !== null) {
                 $resolved = Resolver::resolve($entry->value, $scope);
                 if ($resolved !== null) {
-                    $this->applyAttributeTranslation($element, $attr, $resolved, $maskResult);
+                    $this->applyAttributeTranslation($element, $attr, $resolved, $maskResult, $value);
                     return;
                 }
             }
@@ -154,7 +153,7 @@ final class I18nTranslator
                 return;
             }
 
-            $pending[$cacheKey][] = [$element, $maskResult, $value, false, true, $attr, $scope];
+            $pending[$cacheKey][] = [$element, $maskResult, $value, true, $attr, $scope];
             if (!isset($missingItems[$cacheKey])) {
                 $missingItems[$cacheKey] = new TranslationItem(
                     $cacheKey,
@@ -209,15 +208,15 @@ final class I18nTranslator
                 if ($entry === null || $entry->status !== EntryStatus::Resolved || $entry->value === null) {
                     continue;
                 }
-                foreach ($nodes as [$element, $maskResult, , $isHtml, $isAttribute, $attrName, $scope]) {
+                foreach ($nodes as [$element, $maskResult, $text, $isAttribute, $attrName, $scope]) {
                     $resolved = Resolver::resolve($entry->value, $scope);
                     if ($resolved === null) {
                         continue;
                     }
                     if ($isAttribute && $attrName !== null) {
-                        $this->applyAttributeTranslation($element, $attrName, $resolved, $maskResult);
+                        $this->applyAttributeTranslation($element, $attrName, $resolved, $maskResult, $text);
                     } else {
-                        $this->applyTextTranslation($element, $resolved, $maskResult, $isHtml);
+                        $this->applyTextTranslation($element, $resolved, $maskResult, $text);
                     }
                 }
             }
@@ -329,9 +328,9 @@ final class I18nTranslator
         $this->masker->setIgnoreWords($words);
     }
 
-    private function applyTextTranslation(DOMElement $element, string $resolved, MaskResult $maskResult, bool $isHtml): void
+    private function applyTextTranslation(DOMElement $element, string $resolved, MaskResult $maskResult, string $original): void
     {
-        $unmasked = $this->masker->unmask($resolved, $maskResult->variables, $maskResult->tagAttributes, $this->locale);
+        $unmasked = $this->masker->unmask($resolved, $maskResult->variables, $maskResult->tagAttributes, $this->locale, $original);
         $output = $maskResult->leadingWhitespace
             . $this->masker->applyCasePattern($unmasked, $maskResult->casePattern)
             . $maskResult->trailingWhitespace;
@@ -342,9 +341,9 @@ final class I18nTranslator
         $this->walker->setInnerHtml($element, $output);
     }
 
-    private function applyAttributeTranslation(DOMElement $element, string $attr, string $resolved, MaskResult $maskResult): void
+    private function applyAttributeTranslation(DOMElement $element, string $attr, string $resolved, MaskResult $maskResult, string $original): void
     {
-        $unmasked = $this->masker->unmask($resolved, $maskResult->variables, $maskResult->tagAttributes, $this->locale);
+        $unmasked = $this->masker->unmask($resolved, $maskResult->variables, $maskResult->tagAttributes, $this->locale, $original);
         $output = $maskResult->leadingWhitespace
             . $this->masker->applyCasePattern($unmasked, $maskResult->casePattern)
             . $maskResult->trailingWhitespace;

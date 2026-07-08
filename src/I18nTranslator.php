@@ -14,7 +14,7 @@ use InvalidArgumentException;
  * Configuration keys (passed as an associative array to the constructor):
  *   locale (required, string)
  *   onMissingTranslation (required, callable(TranslationItem[], string $locale): array<string,string|array<string,string>>)
- *   allowedInlineTags (string[], default: a/b/i/u/strong/em/span/small/mark/del)
+ *   allowedInlineTags (string[], default: a/b/i/u/strong/em/span/small/mark/del/sup/sub)
  *   translatableAttributes (string[], default: title/placeholder/alt/aria-label)
  *   ignoreSelectors (string[], default: script/style/code) — bare tag names or [attr] form
  *   ignoreWords (array, default: [])
@@ -25,7 +25,7 @@ use InvalidArgumentException;
 final class I18nTranslator
 {
     private const DEFAULTS = [
-        'allowedInlineTags' => ['a', 'b', 'i', 'u', 'strong', 'em', 'span', 'small', 'mark', 'del'],
+        'allowedInlineTags' => ['a', 'b', 'i', 'u', 'strong', 'em', 'span', 'small', 'mark', 'del', 'sup', 'sub'],
         'translatableAttributes' => ['title', 'placeholder', 'alt', 'aria-label'],
         'ignoreSelectors' => ['script', 'style', 'code'],
         'ignoreWords' => [],

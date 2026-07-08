@@ -60,7 +60,7 @@ An element's markup is aggregated into a single translatable unit only when its 
 |---|---|---|---|
 | `locale` | `string` | — | **Required.** Initial active locale. |
 | `onMissingTranslation` | `callable` | — | **Required.** `(TranslationItem[] $items, string $locale): array<string, string\|array>` |
-| `allowedInlineTags` | `string[]` | `['a','b','i','u','strong','em','span','small','mark','del']` | Tags that may appear inside translatable text and round-trip through translation. |
+| `allowedInlineTags` | `string[]` | `['a','b','i','u','strong','em','span','small','mark','del','sup','sub']` | Tags that may appear inside translatable text and round-trip through translation. |
 | `translatableAttributes` | `string[]` | `['title','placeholder','alt','aria-label']` | Attributes to translate on every element. |
 | `ignoreSelectors` | `string[]` | `['script','style','code']` | Skip subtrees matching these. Tag names or `[attr]` form. |
 | `ignoreWords` | `array` | `[]` | Words preserved verbatim during masking. Plain strings or `['word' => 'X', 'meta' => [...]]`. |

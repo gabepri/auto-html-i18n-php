@@ -125,7 +125,9 @@ final class I18nTranslator
             if (!isset($missingItems[$cacheKey])) {
                 $missingItems[$cacheKey] = new TranslationItem(
                     $cacheKey,
-                    $text,
+                    // Strip aggregation sentinels so the reported source is clean,
+                    // human-readable markup (opaque regions live in the variables).
+                    Masker::stripIgnoreSentinels($text),
                     $maskResult->variables,
                     $scope,
                     $this->debug ? self::collectDebug($element, 'text') : null,

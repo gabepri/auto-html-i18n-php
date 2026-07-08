@@ -18,6 +18,15 @@ final class Masker
     private const FSI = "\u{2068}"; // FIRST STRONG ISOLATE
     private const PDI = "\u{2069}"; // POP DIRECTIONAL ISOLATE
 
+    /**
+     * Private-use sentinels that bracket an ignored subtree inside an aggregated
+     * unit's serialized HTML (emitted by HtmlWalker). Each bracketed region is
+     * masked as one opaque `ignored` variable, so an ignored descendant's text
+     * never enters the cache key. Kept in sync with the JS port's `ignore.ts`.
+     */
+    public const IGNORE_OPEN = "\u{E000}";
+    public const IGNORE_CLOSE = "\u{E001}";
+
     /** @var IgnoreWordEntry[] */
     private array $ignoreWords;
 
@@ -48,6 +57,25 @@ final class Masker
         $text = preg_replace(self::BIDI_CONTROLS, '', $text) ?? $text;
         if ($text === '') {
             return new MaskResult('', [], [], CasePattern::Lower, '', '');
+        }
+
+        // Phase 0: Lift out ignored subtrees (bracketed by HtmlWalker's aggregate
+        // serialization) before any tag/variable masking sees them, so their
+        // user-data text never reaches the cache key. Each region collapses to a
+        // small sentinel token carrying no angle brackets; phase 2 turns it into
+        // one opaque `ignored` variable holding the region's verbatim markup.
+        /** @var string[] $ignoredValues */
+        $ignoredValues = [];
+        if (str_contains($text, self::IGNORE_OPEN)) {
+            $text = preg_replace_callback(
+                '/' . self::IGNORE_OPEN . '(.*?)' . self::IGNORE_CLOSE . '/su',
+                function (array $m) use (&$ignoredValues): string {
+                    $k = count($ignoredValues);
+                    $ignoredValues[] = $m[1];
+                    return self::IGNORE_OPEN . $k . self::IGNORE_CLOSE;
+                },
+                $text,
+            ) ?? $text;
         }
 
         // Phase 1: Normalize allowed inline tags — strip attributes, assign indices,
@@ -109,7 +137,25 @@ final class Masker
         $i = 0;
         $len = strlen($tagProcessed);
 
+        $openLen = strlen(self::IGNORE_OPEN);
+        $closeLen = strlen(self::IGNORE_CLOSE);
         while ($i < $len) {
+            // An ignored-subtree region (lifted out in phase 0) becomes one opaque
+            // variable whose value is the region's verbatim markup, so it round-trips
+            // like other masked variables and never makes the string translatable
+            // on its own.
+            if (substr($tagProcessed, $i, $openLen) === self::IGNORE_OPEN) {
+                $closeIdx = strpos($tagProcessed, self::IGNORE_CLOSE, $i + $openLen);
+                if ($closeIdx !== false) {
+                    $k = (int) substr($tagProcessed, $i + $openLen, $closeIdx - ($i + $openLen));
+                    $idx = count($variables);
+                    $variables[] = new VariableInfo($ignoredValues[$k] ?? '', VariableType::Ignored);
+                    $masked .= '{{' . $idx . '}}';
+                    $i = $closeIdx + $closeLen;
+                    continue;
+                }
+            }
+
             // HTML comment masked as a variable
             if (substr($tagProcessed, $i, 4) === '<!--') {
                 $closeIdx = strpos($tagProcessed, '-->', $i + 4);
@@ -228,8 +274,10 @@ final class Masker
             if ($result === null) {
                 if ($original !== null) {
                     // Fall back to the untranslated source text. It needs no tag
-                    // restoration or sanitizing, but is trimmed so callers can
-                    // re-apply the edge whitespace they extracted at mask time.
+                    // restoration or sanitizing, but is stripped of any aggregation
+                    // sentinels and trimmed so callers can re-apply the edge
+                    // whitespace they extracted at mask time.
+                    $original = self::stripIgnoreSentinels($original);
                     $stripped = preg_replace('/^\s+/u', '', $original) ?? $original;
                     return preg_replace('/\s+$/u', '', $stripped) ?? $stripped;
                 }
@@ -245,7 +293,9 @@ final class Masker
                     if ($variable === null) {
                         return '{{' . $m[1] . '}}';
                     }
-                    if ($variable->type === VariableType::Markup) {
+                    // Markup and ignored subtrees both round-trip verbatim through
+                    // a sanitize-proof sentinel.
+                    if ($variable->type === VariableType::Markup || $variable->type === VariableType::Ignored) {
                         return self::markupSentinel($variable->value, $markupSentinels);
                     }
                     return $isolate && self::isBidiIsolated($variable->type)
@@ -289,6 +339,15 @@ final class Masker
         return $text;
     }
 
+    /** Removes the aggregation sentinels, yielding the clean original markup. */
+    public static function stripIgnoreSentinels(string $text): string
+    {
+        if (!str_contains($text, self::IGNORE_OPEN)) {
+            return $text;
+        }
+        return str_replace([self::IGNORE_OPEN, self::IGNORE_CLOSE], '', $text);
+    }
+
     /**
      * Dry-runs a translation string exactly as consumption would: detects the
      * format ({{N}} simple, {N ICU, or plain), evaluates it against the given
@@ -320,7 +379,7 @@ final class Masker
                         return $m[0];
                     }
                     $variable = $variables[$idx];
-                    if ($variable->type === VariableType::Markup) {
+                    if ($variable->type === VariableType::Markup || $variable->type === VariableType::Ignored) {
                         return self::markupSentinel($variable->value, $markupSentinels);
                     }
                     return $isolate && self::isBidiIsolated($variable->type)
@@ -377,7 +436,8 @@ final class Masker
     {
         return $type !== VariableType::Symbol
             && $type !== VariableType::Comment
-            && $type !== VariableType::Markup;
+            && $type !== VariableType::Markup
+            && $type !== VariableType::Ignored;
     }
 
     /**
@@ -562,8 +622,8 @@ final class Masker
 
         $args = [];
         foreach ($variables as $i => $vi) {
-            if ($vi->type === VariableType::Markup) {
-                // Hold markup behind a sanitize-proof sentinel; restored verbatim by the caller.
+            if ($vi->type === VariableType::Markup || $vi->type === VariableType::Ignored) {
+                // Hold markup / ignored subtrees behind a sanitize-proof sentinel; restored verbatim by the caller.
                 $args[(string) $i] = self::markupSentinel($vi->value, $markupOut);
             } else {
                 // ICU plural/select rules need numeric values for proper evaluation

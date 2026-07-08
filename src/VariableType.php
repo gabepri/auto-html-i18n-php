@@ -14,4 +14,5 @@ enum VariableType: string
     case Symbol = 'symbol';
     case Comment = 'comment';
     case Markup = 'markup';
+    case Ignored = 'ignored';
 }

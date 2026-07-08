@@ -132,7 +132,7 @@ final class HtmlWalker
                     $hash = spl_object_id($aggregationTarget);
                     if (!isset($aggregatedParents[$hash])) {
                         $aggregatedParents[$hash] = $aggregationTarget;
-                        $innerHtml = $this->getInnerHtml($aggregationTarget);
+                        $innerHtml = $this->serializeAggregate($aggregationTarget);
                         if (trim($innerHtml) !== '') {
                             $textItems[] = [
                                 $aggregationTarget,
@@ -173,18 +173,30 @@ final class HtmlWalker
     {
         $current = $node;
         while ($current !== null) {
-            if ($current instanceof DOMElement) {
-                if ($current->hasAttribute($this->ignoreAttribute)) {
-                    return true;
-                }
-                $tag = strtolower($current->nodeName);
-                foreach ($this->ignoreSelectors as $sel) {
-                    if ($this->matchesSimpleSelector($current, $tag, $sel)) {
-                        return true;
-                    }
-                }
+            if ($current instanceof DOMElement && $this->isIgnoredElement($current)) {
+                return true;
             }
             $current = $current->parentNode;
+        }
+        return false;
+    }
+
+    /**
+     * True when $el itself is an ignore boundary — the per-element half of the
+     * ignore decision, reused by {@see isIgnored} (ancestor walk) and by the
+     * aggregation path, which must spot an ignored *descendant* of a target that
+     * is not itself ignored.
+     */
+    private function isIgnoredElement(DOMElement $el): bool
+    {
+        if ($el->hasAttribute($this->ignoreAttribute)) {
+            return true;
+        }
+        $tag = strtolower($el->nodeName);
+        foreach ($this->ignoreSelectors as $sel) {
+            if ($this->matchesSimpleSelector($el, $tag, $sel)) {
+                return true;
+            }
         }
         return false;
     }
@@ -294,6 +306,75 @@ final class HtmlWalker
             }
         }
         return false;
+    }
+
+    /**
+     * Inner HTML of an aggregation target, but with every topmost ignored
+     * descendant subtree bracketed in U+E000…U+E001 sentinels so the Masker masks
+     * it as one opaque variable (keeping its user-data text out of the cache key).
+     * Detection runs on the live tree (so ancestor-aware selectors resolve) while
+     * the brackets are inserted into a detached clone, read back as an accurate
+     * serialization. Returns plain inner HTML when there's no ignored descendant.
+     */
+    private function serializeAggregate(DOMElement $target): string
+    {
+        if (!$this->hasIgnoredDescendant($target)) {
+            return $this->getInnerHtml($target);
+        }
+        $clone = $target->cloneNode(true);
+        if ($clone instanceof DOMElement) {
+            $this->wrapIgnoredRegions($target, $clone);
+            return $this->getInnerHtml($clone);
+        }
+        return $this->getInnerHtml($target);
+    }
+
+    private function hasIgnoredDescendant(DOMElement $element): bool
+    {
+        foreach ($element->childNodes as $child) {
+            if ($child instanceof DOMElement) {
+                if ($this->isIgnoredElement($child)) {
+                    return true;
+                }
+                if ($this->hasIgnoredDescendant($child)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Walk $live and $clone in lockstep; bracket each topmost ignored descendant
+     * in the clone with sentinel text nodes (don't descend into it), recursing
+     * into non-ignored elements to reach deeper ignored subtrees.
+     */
+    private function wrapIgnoredRegions(DOMElement $live, DOMElement $clone): void
+    {
+        $liveChildren = iterator_to_array($live->childNodes, false);
+        $cloneChildren = iterator_to_array($clone->childNodes, false);
+        $doc = $clone->ownerDocument;
+        if ($doc === null) {
+            return;
+        }
+        foreach ($liveChildren as $idx => $liveChild) {
+            $cloneChild = $cloneChildren[$idx] ?? null;
+            if (!$liveChild instanceof DOMElement || !$cloneChild instanceof DOMNode) {
+                continue;
+            }
+            if ($this->isIgnoredElement($liveChild)) {
+                $clone->insertBefore($doc->createTextNode(Masker::IGNORE_OPEN), $cloneChild);
+                $after = $cloneChild->nextSibling;
+                $closeNode = $doc->createTextNode(Masker::IGNORE_CLOSE);
+                if ($after !== null) {
+                    $clone->insertBefore($closeNode, $after);
+                } else {
+                    $clone->appendChild($closeNode);
+                }
+            } elseif ($cloneChild instanceof DOMElement) {
+                $this->wrapIgnoredRegions($liveChild, $cloneChild);
+            }
+        }
     }
 
     public function getInnerHtml(DOMElement $element): string

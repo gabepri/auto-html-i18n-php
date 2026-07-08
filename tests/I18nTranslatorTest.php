@@ -152,6 +152,118 @@ final class I18nTranslatorTest extends TestCase
         self::assertStringContainsString('Tienes 5 manzanas', $out);
     }
 
+    public function testTranslateHtmlMasksIgnoredDescendantAsVariable(): void
+    {
+        $captured = null;
+        $i = $this->make([
+            'onMissingTranslation' => function (array $items, string $locale) use (&$captured): array {
+                $captured = $items[0];
+                return ['Submitted By: {{0}}' => 'Enviado por: {{0}}'];
+            },
+        ]);
+        $out = $i->translateHtml(
+            '<div>Submitted By: <span class="font-bold" data-i18n-ignore>Kailey Booth</span></div>',
+        );
+
+        // The ignored child's user data never enters the key; it's an opaque variable.
+        self::assertNotNull($captured);
+        self::assertSame('Submitted By: {{0}}', $captured->masked);
+        self::assertStringNotContainsString('Kailey', $captured->masked);
+        self::assertSame(VariableType::Ignored, $captured->variables[0]->type);
+        // Reported original is clean markup — no aggregation sentinels leak out.
+        self::assertStringNotContainsString("\u{E000}", $captured->original);
+
+        // Translated sentence with the ignored subtree restored verbatim.
+        self::assertStringContainsString('Enviado por:', $out);
+        self::assertStringContainsString('data-i18n-ignore', $out);
+        self::assertStringContainsString('Kailey Booth', $out);
+    }
+
+    public function testTranslateHtmlKeepsTranslatableInlineChildWhileIgnoringDescendant(): void
+    {
+        $i = $this->make([
+            'onMissingTranslation' => function (array $items, string $locale): array {
+                self::assertSame('Please <b0>read</b0> this {{0}}', $items[0]->masked);
+                return ['Please <b0>read</b0> this {{0}}' => 'Por favor <b0>lea</b0> esto {{0}}'];
+            },
+        ]);
+        $out = $i->translateHtml(
+            '<div>Please <b>read</b> this <span data-i18n-ignore>Kailey</span></div>',
+        );
+        self::assertStringContainsString('<b>lea</b>', $out);
+        self::assertStringContainsString('Kailey', $out);
+        self::assertStringContainsString('data-i18n-ignore', $out);
+    }
+
+    public function testTranslateHtmlMasksSelectorIgnoredDescendant(): void
+    {
+        $i = $this->make([
+            'ignoreSelectors' => ['[data-secret]'],
+            'onMissingTranslation' => function (array $items, string $locale): array {
+                self::assertSame('Signed by {{0}}', $items[0]->masked);
+                self::assertSame(VariableType::Ignored, $items[0]->variables[0]->type);
+                return ['Signed by {{0}}' => 'Firmado por {{0}}'];
+            },
+        ]);
+        $out = $i->translateHtml('<div>Signed by <span data-secret>jbooth</span></div>');
+        self::assertStringContainsString('Firmado por', $out);
+        self::assertStringContainsString('jbooth', $out);
+    }
+
+    public function testTranslateHtmlDoesNotReportSentenceOnlyPunctuationOnceIgnored(): void
+    {
+        $called = false;
+        $i = $this->make([
+            'onMissingTranslation' => function (array $items, string $locale) use (&$called): array {
+                $called = true;
+                return [];
+            },
+        ]);
+        $out = $i->translateHtml('<div>: <span data-i18n-ignore>Kailey Booth</span></div>');
+        self::assertFalse($called);
+        // Untouched, so the ignored user data is still present verbatim.
+        self::assertStringContainsString('Kailey Booth', $out);
+    }
+
+    public function testTranslateHtmlGivesMultipleIgnoredDescendantsOrderedSlots(): void
+    {
+        $captured = null;
+        $i = $this->make([
+            'onMissingTranslation' => function (array $items, string $locale) use (&$captured): array {
+                $captured = $items[0];
+                return ['From {{0}} to {{1}}' => 'De {{0}} a {{1}}'];
+            },
+        ]);
+        $out = $i->translateHtml('<div>From <span data-i18n-ignore>Alice</span> to <span data-i18n-ignore>Bob</span></div>');
+
+        self::assertNotNull($captured);
+        self::assertSame('From {{0}} to {{1}}', $captured->masked);
+        self::assertCount(2, $captured->variables);
+        // Each slot restored in its own place, in order.
+        self::assertMatchesRegularExpression('/De\s+<span[^>]*>Alice<\/span>\s+a\s+<span[^>]*>Bob<\/span>/', $out);
+    }
+
+    public function testTranslateHtmlTreatsNestedIgnoredSubtreeAsOneSlot(): void
+    {
+        $captured = null;
+        $i = $this->make([
+            'onMissingTranslation' => function (array $items, string $locale) use (&$captured): array {
+                $captured = $items[0];
+                return ['Owner: {{0}}' => 'Propietario: {{0}}'];
+            },
+        ]);
+        // The masker does not descend into the ignored subtree: one variable, and
+        // the nested <b> is not a separate structural marker.
+        $out = $i->translateHtml('<div>Owner: <span data-i18n-ignore>Name <b>Booth</b> Jr.</span></div>');
+
+        self::assertNotNull($captured);
+        self::assertSame('Owner: {{0}}', $captured->masked);
+        self::assertCount(1, $captured->variables);
+        self::assertStringContainsString('<b>Booth</b>', $captured->variables[0]->value);
+        self::assertStringContainsString('Propietario:', $out);
+        self::assertStringContainsString('<b>Booth</b>', $out);
+    }
+
     public function testTranslateHtmlFallsBackToOriginalTextWhenIcuEvaluationFails(): void
     {
         $i = $this->make([

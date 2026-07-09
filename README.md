@@ -1,6 +1,6 @@
 # auto-html-i18n (PHP)
 
-Server-side automatic translation for PHP-rendered HTML. Walks markup, masks dynamic values (numbers, dates, names, URLs, inline tags) into stable cache keys, looks them up in a translation cache, and falls back to a user-supplied backend for cache misses. Returns translated HTML in a single synchronous pass — no async bookkeeping, no client-side JS required.
+Server-side automatic translation for PHP-rendered HTML. Walks markup, masks dynamic values (numbers, dates, names, URLs, emails, symbols, inline tags) into stable cache keys, looks them up in a translation cache, and falls back to a user-supplied backend for cache misses. Returns translated HTML in a single synchronous pass — no async bookkeeping, no client-side JS required.
 
 This is the PHP sibling of [`packages/js`](../js). Both packages share the same masking algorithm and a corpus of cross-port test fixtures so behavior stays identical.
 
@@ -42,11 +42,14 @@ Before lookup, each translatable string is normalized into a stable key with dyn
 |---|---|---|
 | `You have 5 apples` | `You have {{0}} apples` | `[{value: "5", type: "number"}]` |
 | `Visit https://acme.com` | `Visit {{0}}` | `[{value: "https://acme.com", type: "url"}]` |
+| `Email mary@acme.com` | `Email {{0}}` | `[{value: "mary@acme.com", type: "email"}]` |
 | `Click <a href="/x">here</a>` | `Click <a0>here</a0>` | `[]` (tag attrs preserved separately) |
 | `See <svg id="x9">…</svg> now` | `See {{0}}…{{1}} now` | `[{value: "<svg id=\"x9\">", type: "markup"}, …]` |
 | `HELLO WORLD` | `hello world` | (case is restored on output) |
 
 This means **you only translate the abstract sentence shape once** — `You have {{0}} apples` works for any number — and your translations don't have to know about specific values.
+
+Recognized value types, matched in priority order, are `ignoreWord`, `url`, `email`, `date`, `number`, and `symbol` — identical to the JS port. URLs and emails are matched ahead of dates and numbers so they mask as a single unit rather than fragmenting. Strings containing no Unicode letter are skipped outright rather than masked. None of these ever reach your translation backend, so **`ignoreAttribute` is unnecessary for them**; reserve it for letter-bearing content the masker cannot recognize by shape, such as personal names or user-authored prose.
 
 Tags outside `allowedInlineTags` (an `<input>`, `<svg>`, `<div>`, …) are captured as opaque `markup` variables instead of being left in the key — so their volatile attributes (random ids, gradient refs) never destabilize the cache key, and the original markup is restored verbatim on output. Nested same-name inline tags (`<span><span>…</span></span>`) are matched opener-to-closer by a stack, so their indices never cross.
 

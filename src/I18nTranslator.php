@@ -6,6 +6,7 @@ namespace AutoHtmlI18n;
 
 use Closure;
 use DOMElement;
+use DOMText;
 use InvalidArgumentException;
 
 /**
@@ -92,12 +93,12 @@ final class I18nTranslator
             return $html;
         }
 
-        /** @var array<string,array<int,array{0:DOMElement,1:MaskResult,2:string,3:bool,4:?string,5:?string}>> $pending */
+        /** @var array<string,array<int,array{0:DOMElement,1:MaskResult,2:string,3:bool,4:?string,5:?string,6:?DOMText}>> $pending */
         $pending = [];
         /** @var array<string,TranslationItem> $missingItems */
         $missingItems = [];
 
-        $onText = function (DOMElement $element, string $text, ?string $scope, ?string $keyOverride, bool $isInnerHtml) use (&$pending, &$missingItems): void {
+        $onText = function (DOMElement $element, string $text, ?string $scope, ?string $keyOverride, bool $isInnerHtml, ?DOMText $textNode = null) use (&$pending, &$missingItems): void {
             $maskResult = $this->masker->mask($text);
 
             if ($keyOverride === null && !self::hasTranslatableContent($maskResult->masked)) {
@@ -110,7 +111,7 @@ final class I18nTranslator
             if ($entry !== null && $entry->status === EntryStatus::Resolved && $entry->value !== null) {
                 $resolved = Resolver::resolve($entry->value, $scope);
                 if ($resolved !== null) {
-                    $this->applyTextTranslation($element, $resolved, $maskResult, $text);
+                    $this->applyTextTranslation($element, $resolved, $maskResult, $text, $textNode);
                     return;
                 }
             }
@@ -121,7 +122,7 @@ final class I18nTranslator
             }
 
             // Track pending and add to missing batch (deduplicated by masked key)
-            $pending[$cacheKey][] = [$element, $maskResult, $text, false, null, $scope];
+            $pending[$cacheKey][] = [$element, $maskResult, $text, false, null, $scope, $textNode];
             if (!isset($missingItems[$cacheKey])) {
                 $missingItems[$cacheKey] = new TranslationItem(
                     $cacheKey,
@@ -155,7 +156,7 @@ final class I18nTranslator
                 return;
             }
 
-            $pending[$cacheKey][] = [$element, $maskResult, $value, true, $attr, $scope];
+            $pending[$cacheKey][] = [$element, $maskResult, $value, true, $attr, $scope, null];
             if (!isset($missingItems[$cacheKey])) {
                 $missingItems[$cacheKey] = new TranslationItem(
                     $cacheKey,
@@ -210,7 +211,7 @@ final class I18nTranslator
                 if ($entry === null || $entry->status !== EntryStatus::Resolved || $entry->value === null) {
                     continue;
                 }
-                foreach ($nodes as [$element, $maskResult, $text, $isAttribute, $attrName, $scope]) {
+                foreach ($nodes as [$element, $maskResult, $text, $isAttribute, $attrName, $scope, $textNode]) {
                     $resolved = Resolver::resolve($entry->value, $scope);
                     if ($resolved === null) {
                         continue;
@@ -218,7 +219,7 @@ final class I18nTranslator
                     if ($isAttribute && $attrName !== null) {
                         $this->applyAttributeTranslation($element, $attrName, $resolved, $maskResult, $text);
                     } else {
-                        $this->applyTextTranslation($element, $resolved, $maskResult, $text);
+                        $this->applyTextTranslation($element, $resolved, $maskResult, $text, $textNode);
                     }
                 }
             }
@@ -359,7 +360,7 @@ final class I18nTranslator
         $this->masker->setIgnoreWords($words);
     }
 
-    private function applyTextTranslation(DOMElement $element, string $resolved, MaskResult $maskResult, string $original): void
+    private function applyTextTranslation(DOMElement $element, string $resolved, MaskResult $maskResult, string $original, ?DOMText $textNode = null): void
     {
         $unmasked = $this->masker->unmask($resolved, $maskResult->variables, $maskResult->tagAttributes, $this->locale, $original);
         $output = $maskResult->leadingWhitespace
@@ -369,6 +370,12 @@ final class I18nTranslator
         // unmask() may emit HTML entities like &lt; (sanitized output) that must be
         // parsed-then-reserialized rather than treated as literal text — otherwise the
         // serializer double-escapes the &.
+        if ($textNode !== null && $textNode->parentNode !== null) {
+            // Node-scoped unit: rewrite just this text node, leaving the element's other
+            // units — and the elements between them — in place.
+            $this->walker->replaceTextNode($textNode, $output);
+            return;
+        }
         $this->walker->setInnerHtml($element, $output);
     }
 
@@ -384,7 +391,7 @@ final class I18nTranslator
     /**
      * Walk a parsed HTML fragment and dispatch text/attribute callbacks. Mutation by callbacks is allowed.
      *
-     * @param callable(DOMElement, string, ?string, ?string, bool):void $onText
+     * @param callable(DOMElement, string, ?string, ?string, bool, ?DOMText):void $onText
      * @param callable(DOMElement, string, string, ?string):void $onAttribute
      */
     private function walkFragment(\DOMDocumentFragment $fragment, callable $onText, callable $onAttribute): void
@@ -398,8 +405,8 @@ final class I18nTranslator
         foreach ($attrItems as [$element, $attr, $value, $scope]) {
             $onAttribute($element, $attr, $value, $scope);
         }
-        foreach ($textItems as [$element, $text, $scope, $keyOverride, $isInnerHtml]) {
-            $onText($element, $text, $scope, $keyOverride, $isInnerHtml);
+        foreach ($textItems as [$element, $text, $scope, $keyOverride, $isInnerHtml, $textNode]) {
+            $onText($element, $text, $scope, $keyOverride, $isInnerHtml, $textNode);
         }
     }
 

@@ -96,6 +96,43 @@ final class I18nTranslatorTest extends TestCase
         self::assertSame('hello world', $captured[0]->masked);
     }
 
+    /**
+     * A parent that can't aggregate (a non-inline child disqualifies it) still holds one
+     * translation unit per direct text node. Each must land on its own DOMText node:
+     * writing them all through the parent's innerHTML makes the last one win and destroys
+     * both the earlier text and the intervening element.
+     */
+    public function testTranslateHtmlTranslatesEachTextNodeAroundABr(): void
+    {
+        $i = $this->make([
+            'initialCache' => ['hello there' => 'hola alli', 'goodbye now' => 'adios ahora'],
+        ]);
+        $out = $i->translateHtml('<p>hello there<br>goodbye now</p>');
+        self::assertSame('<p>hola alli<br>adios ahora</p>', $out);
+    }
+
+    public function testTranslateHtmlTranslatesEachTextNodeAroundAFormControl(): void
+    {
+        $i = $this->make([
+            'initialCache' => ['hello there' => 'hola alli', 'goodbye now' => 'adios ahora'],
+        ]);
+        $out = $i->translateHtml('<label>hello there<input>goodbye now</label>');
+        self::assertStringContainsString('hola alli', $out);
+        self::assertStringContainsString('adios ahora', $out);
+        self::assertStringContainsString('<input', $out);
+    }
+
+    public function testTranslateHtmlTranslatesEachTextNodeViaThePendingPath(): void
+    {
+        $i = $this->make([
+            'onMissingTranslation' => function (array $items, string $locale): array {
+                return ['hello there' => 'hola alli', 'goodbye now' => 'adios ahora'];
+            },
+        ]);
+        $out = $i->translateHtml('<p>hello there<br>goodbye now</p>');
+        self::assertSame('<p>hola alli<br>adios ahora</p>', $out);
+    }
+
     public function testTranslateHtmlBatchesAllUnknowns(): void
     {
         $captured = [];

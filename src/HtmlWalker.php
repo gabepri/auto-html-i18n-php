@@ -63,7 +63,7 @@ final class HtmlWalker
         }
 
         // Pass 1: collect items, then dispatch (so DOM mutations don't disrupt traversal mid-walk)
-        /** @var array<int,array{0:DOMElement,1:string,2:?string,3:?string,4:bool}> $textItems */
+        /** @var array<int,array{0:DOMElement,1:string,2:?string,3:?string,4:bool,5:?DOMText}> $textItems */
         $textItems = [];
         /** @var array<int,array{0:DOMElement,1:string,2:string,3:?string}> $attrItems */
         $attrItems = [];
@@ -74,8 +74,8 @@ final class HtmlWalker
         foreach ($attrItems as [$element, $attr, $value, $scope]) {
             $onAttribute($element, $attr, $value, $scope);
         }
-        foreach ($textItems as [$element, $text, $scope, $keyOverride, $isInnerHtml]) {
-            $onText($element, $text, $scope, $keyOverride, $isInnerHtml);
+        foreach ($textItems as [$element, $text, $scope, $keyOverride, $isInnerHtml, $textNode]) {
+            $onText($element, $text, $scope, $keyOverride, $isInnerHtml, $textNode);
         }
 
         return $parser->saveHTML($fragment);
@@ -86,7 +86,7 @@ final class HtmlWalker
      * Items are written into the provided arrays so the caller can dispatch them
      * after the traversal completes (avoiding mid-walk DOM mutation hazards).
      *
-     * @param array<int,array{0:DOMElement,1:string,2:?string,3:?string,4:bool}> $textItems
+     * @param array<int,array{0:DOMElement,1:string,2:?string,3:?string,4:bool,5:?DOMText}> $textItems
      * @param array<int,array{0:DOMElement,1:string,2:string,3:?string}> $attrItems
      */
     public function collect(
@@ -140,18 +140,23 @@ final class HtmlWalker
                                 $this->resolveScope($aggregationTarget),
                                 $aggregationTarget->getAttribute($this->keyAttribute) ?: null,
                                 true,
+                                null,
                             ];
                         }
                     }
                     return;
                 }
 
+                // Carry the text node itself: a non-aggregatable parent can hold several,
+                // and each is its own unit. Writing one through the parent's innerHTML
+                // would destroy the others (and any element between them).
                 $textItems[] = [
                     $parent,
                     $text,
                     $this->resolveScope($parent),
                     $parent->getAttribute($this->keyAttribute) ?: null,
                     false,
+                    $node,
                 ];
                 return;
             }
@@ -412,6 +417,35 @@ final class HtmlWalker
         if ($fragment instanceof DOMDocumentFragment) {
             $element->appendChild($fragment);
         }
+    }
+
+    /**
+     * Replace a single text node with the given HTML string, leaving its siblings — other
+     * text units, and the elements between them — untouched. Parses rather than assigning
+     * nodeValue for the same reason as setInnerHtml: unmask() may emit entities like &lt;
+     * that must be parsed-then-reserialized instead of double-escaped.
+     */
+    public function replaceTextNode(DOMText $node, string $html): void
+    {
+        $parent = $node->parentNode;
+        if ($parent === null) {
+            return;
+        }
+        if ($html === '') {
+            $parent->removeChild($node);
+            return;
+        }
+        $doc = $node->ownerDocument;
+        if ($doc === null) {
+            return;
+        }
+        $parser = new HTML5();
+        $fragment = $parser->loadHTMLFragment($html, ['target_document' => $doc]);
+        if (!$fragment instanceof DOMDocumentFragment) {
+            return;
+        }
+        $parent->insertBefore($fragment, $node);
+        $parent->removeChild($node);
     }
 
     /**

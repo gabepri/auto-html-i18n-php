@@ -21,6 +21,10 @@ use InvalidArgumentException;
  *   ignoreWords (array, default: [])
  *   initialCache (array<string,string|array<string,string>>, default: [])
  *   originalAttribute / pendingAttribute / keyAttribute / ignoreAttribute / scopeAttribute (strings)
+ *   skipUnrenderedValues (bool, default: true) — never report masks captured from a
+ *     half-rendered UI ("Level undefined", "about NaN minutes", "results for ''")
+ *   isUnrenderedValue (callable(string $masked, string $original): bool, default:
+ *     Unrendered::isUnrenderedValue) — overrides that detection
  *   debug (bool, default: false)
  */
 final class I18nTranslator
@@ -36,6 +40,8 @@ final class I18nTranslator
         'keyAttribute' => 'data-i18n-key',
         'ignoreAttribute' => 'data-i18n-ignore',
         'scopeAttribute' => 'data-i18n-scope',
+        'skipUnrenderedValues' => true,
+        'isUnrenderedValue' => null,
         'debug' => false,
     ];
 
@@ -47,6 +53,12 @@ final class I18nTranslator
     private readonly Masker $masker;
     private readonly HtmlWalker $walker;
     private readonly bool $debug;
+
+    /**
+     * Recognizes a mask captured from a half-rendered UI, which must never be reported.
+     * Always false when the consumer turns the gate off.
+     */
+    private readonly Closure $isUnrendered;
 
     /**
      * @param array<string,mixed> $config
@@ -65,6 +77,13 @@ final class I18nTranslator
         $this->locale = $merged['locale'];
         $this->onMissingTranslation = Closure::fromCallable($merged['onMissingTranslation']);
         $this->debug = (bool) $merged['debug'];
+
+        $detect = is_callable($merged['isUnrenderedValue'])
+            ? Closure::fromCallable($merged['isUnrenderedValue'])
+            : static fn(string $masked, string $original): bool => Unrendered::isUnrenderedValue($masked);
+        $this->isUnrendered = ((bool) $merged['skipUnrenderedValues'])
+            ? $detect
+            : static fn(string $masked, string $original): bool => false;
 
         $this->store = new Store();
         if (is_array($merged['initialCache']) && $merged['initialCache'] !== []) {
@@ -121,6 +140,10 @@ final class I18nTranslator
                 return;
             }
 
+            if (!$this->isReportable($maskResult->masked, $text)) {
+                return; // half-rendered: leave the text alone and report nothing
+            }
+
             // Track pending and add to missing batch (deduplicated by masked key)
             $pending[$cacheKey][] = [$element, $maskResult, $text, false, null, $scope, $textNode];
             if (!isset($missingItems[$cacheKey])) {
@@ -154,6 +177,10 @@ final class I18nTranslator
 
             if ($entry !== null && $entry->status === EntryStatus::Reported) {
                 return;
+            }
+
+            if (!$this->isReportable($maskResult->masked, $value)) {
+                return; // half-rendered: leave the attribute alone and report nothing
             }
 
             $pending[$cacheKey][] = [$element, $maskResult, $value, true, $attr, $scope, null];
@@ -408,6 +435,21 @@ final class I18nTranslator
         foreach ($textItems as [$element, $text, $scope, $keyOverride, $isInnerHtml, $textNode]) {
             $onText($element, $text, $scope, $keyOverride, $isInnerHtml, $textNode);
         }
+    }
+
+    /**
+     * Is this unit worth reporting as a missing string? A mask the UI produced before its
+     * data arrived ("Level undefined") is not: it can never be looked up again — the same
+     * UI masks to "Level {{0}}" once the data lands, a different key — and it poisons
+     * machine translation downstream (see {@see Unrendered}).
+     *
+     * Nothing about the skip is recorded, so the correct mask reports normally on the next
+     * render. A translation the consumer *has* supplied for such a key still applies — the
+     * gate is on reporting, not on lookup, and sits after the cache hit.
+     */
+    private function isReportable(string $masked, string $original): bool
+    {
+        return !($this->isUnrendered)($masked, $original);
     }
 
     private static function hasTranslatableContent(string $masked): bool

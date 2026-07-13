@@ -72,6 +72,8 @@ An element's markup is aggregated into a single translatable unit only when its 
 | `keyAttribute` | `string` | `'data-i18n-key'` | When set on an element, overrides the masked key for that element's content. |
 | `ignoreAttribute` | `string` | `'data-i18n-ignore'` | Setting this attribute on an element skips its subtree. |
 | `scopeAttribute` | `string` | `'data-i18n-scope'` | Names a scope that scope-keyed translations resolve against. |
+| `skipUnrenderedValues` | `bool` | `true` | Never report strings a component painted before its data arrived (`"Level undefined"`, `"about NaN minutes"`, `"results for ''"`). See [Half-rendered values](#half-rendered-values). |
+| `isUnrenderedValue` | `callable` | built-in | `(string $masked, string $original): bool`. Overrides the half-rendered detection. Ignored when `skipUnrenderedValues` is `false`. |
 | `debug` | `bool` | `false` | When true, each `TranslationItem` includes a `debug` payload (DOM context). |
 
 ### Methods
@@ -108,6 +110,27 @@ $i18n->getIgnoreWords(): array
 $i18n->addIgnoreWords(array $words): void
 $i18n->removeIgnoreWords(array $words): void
 $i18n->setIgnoreWords(array $words): void
+```
+
+## Half-rendered values
+
+Markup rendered before its data arrived carries the *stringified absence* of the value — `Level undefined`, `Read time about NaN minutes`, `No results found for ''`. Those tokens are not numbers or dates, so masking bakes the broken value into the key as literal text (`"Level undefined"`, not `"Level {{0}}"`).
+
+By default such text is **rendered untranslated but never reported** — `onMissingTranslation` never sees it, and nothing about the skip is cached, so the correct mask reports normally on the next render. A translation you *have* cached for such a key still applies; the gate is on reporting, not on lookup.
+
+A mask counts as half-rendered when it contains `undefined`, `null` or `NaN` as a standalone word, or an empty quote pair (`''`, `""`, `«»`, `‘’`, `“”`). Word boundaries are respected, so `Annulled contracts` reports as usual.
+
+```php
+// Turn the gate off entirely.
+$i18n = new I18nTranslator([..., 'skipUnrenderedValues' => false]);
+
+// Or keep it and supply your own predicate — here copy may legitimately say
+// "null", but "undefined" is always a rendering artifact.
+$i18n = new I18nTranslator([
+    ...,
+    'isUnrenderedValue' => fn(string $masked, string $original): bool
+        => preg_match('/\bundefined\b/', $masked) === 1,
+]);
 ```
 
 ## Scoped translations

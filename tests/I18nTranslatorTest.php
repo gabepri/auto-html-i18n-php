@@ -675,4 +675,76 @@ final class I18nTranslatorTest extends TestCase
         $out = $i->translateHtml('<div data-i18n-scope="formal"><p data-i18n-key="greeting">Hello</p></div>');
         self::assertStringContainsString('Bienvenido', $out);
     }
+
+    public function testHalfRenderedValuesAreNotReported(): void
+    {
+        $captured = [];
+        $i = $this->make([
+            'onMissingTranslation' => function (array $items, string $locale) use (&$captured): array {
+                $captured = array_map(static fn(TranslationItem $item): string => $item->masked, $items);
+                return [];
+            },
+        ]);
+
+        $out = $i->translateHtml(
+            '<p>Level undefined</p>'
+            . '<p>Read time about NaN minutes</p>'
+            . '<p>Owner is null</p>'
+            . "<p>No Encyclopedia results found for ''</p>"
+            . '<img alt="Photo of undefined">'
+            . '<p>Only real copy here</p>',
+        );
+
+        self::assertSame(['Only real copy here'], $captured);
+        // Nothing to translate to — the half-rendered text stays exactly as it came in.
+        self::assertStringContainsString('<p>Level undefined</p>', $out);
+    }
+
+    public function testHalfRenderedValuesReportedWhenSkipDisabled(): void
+    {
+        $captured = [];
+        $i = $this->make([
+            'skipUnrenderedValues' => false,
+            'onMissingTranslation' => function (array $items, string $locale) use (&$captured): array {
+                $captured = array_map(static fn(TranslationItem $item): string => $item->masked, $items);
+                return [];
+            },
+        ]);
+
+        $i->translateHtml('<p>Level undefined</p>');
+        self::assertSame(['Level undefined'], $captured);
+    }
+
+    public function testCustomIsUnrenderedValuePredicate(): void
+    {
+        $captured = [];
+        $i = $this->make([
+            // A corpus whose copy legitimately says "null": only "undefined" is an artifact.
+            'isUnrenderedValue' => static fn(string $masked, string $original): bool
+                => preg_match('/\bundefined\b/', $masked) === 1,
+            'onMissingTranslation' => function (array $items, string $locale) use (&$captured): array {
+                $captured = array_map(static fn(TranslationItem $item): string => $item->masked, $items);
+                return [];
+            },
+        ]);
+
+        $i->translateHtml('<p>Owner is null</p><p>Level undefined</p>');
+        self::assertSame(['Owner is null'], $captured);
+    }
+
+    public function testCachedTranslationForHalfRenderedKeyStillApplies(): void
+    {
+        $called = false;
+        $i = $this->make([
+            'initialCache' => ['Level undefined' => 'Nivel desconocido'],
+            'onMissingTranslation' => function (array $items, string $locale) use (&$called): array {
+                $called = true;
+                return [];
+            },
+        ]);
+
+        $out = $i->translateHtml('<p>Level undefined</p>');
+        self::assertStringContainsString('Nivel desconocido', $out);
+        self::assertFalse($called);
+    }
 }

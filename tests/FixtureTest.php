@@ -7,6 +7,7 @@ namespace AutoHtmlI18n\Tests;
 use AutoHtmlI18n\CasePattern;
 use AutoHtmlI18n\Masker;
 use AutoHtmlI18n\TextDirection;
+use AutoHtmlI18n\Unrendered;
 use AutoHtmlI18n\VariableInfo;
 use AutoHtmlI18n\VariableType;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -253,6 +254,42 @@ final class FixtureTest extends TestCase
                     $name,
                     (string) ($case['locale'] ?? ''),
                     (string) ($case['expected'] ?? ''),
+                ];
+            }
+        }
+    }
+
+    #[DataProvider('unrenderedFixtureProvider')]
+    public function testUnrenderedFixture(string $name, string $masked, bool $expected): void
+    {
+        self::assertSame($expected, Unrendered::isUnrenderedValue($masked), "unrendered mismatch for: $name");
+    }
+
+    /**
+     * @return iterable<string,array{0:string,1:string,2:bool}>
+     */
+    public static function unrenderedFixtureProvider(): iterable
+    {
+        $dir = realpath(__DIR__ . '/../../../fixtures/unrendered');
+        if ($dir === false) {
+            throw new \RuntimeException('fixtures/unrendered directory not found');
+        }
+        $files = glob($dir . '/*.json') ?: [];
+        sort($files);
+        foreach ($files as $file) {
+            $base = basename($file);
+            $contents = file_get_contents($file);
+            if ($contents === false) {
+                continue;
+            }
+            /** @var array<int,array<string,mixed>> $cases */
+            $cases = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+            foreach ($cases as $case) {
+                $name = $base . ': ' . ($case['name'] ?? '(unnamed)');
+                yield $name => [
+                    $name,
+                    (string) ($case['masked'] ?? ''),
+                    (bool) ($case['expected'] ?? false),
                 ];
             }
         }

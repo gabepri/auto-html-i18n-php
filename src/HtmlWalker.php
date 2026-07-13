@@ -19,6 +19,21 @@ final class HtmlWalker
     /** @var string[] */
     private readonly array $ignoreSelectors;
 
+    /**
+     * Inline-ness verdicts, cached for the duration of one collect(). findAggregationTarget
+     * runs per text node and climbs to the root, and every rung re-tests each child's whole
+     * subtree — so a paragraph with several direct text nodes rescans the same subtrees once
+     * per text node, and again at each ancestor. The verdicts can't change mid-collect (items
+     * are dispatched only after the traversal ends), so compute each element once.
+     * Keyed by spl_object_id; torn down when collect() returns.
+     *
+     * @var array<int,bool>|null
+     */
+    private ?array $inlineMemo = null;
+
+    /** @var array<int,bool>|null */
+    private ?array $aggregateMemo = null;
+
     /** @var string[] */
     private readonly array $translatableAttributes;
 
@@ -108,6 +123,9 @@ final class HtmlWalker
         /** @var array<int,DOMElement> $aggregatedParents */
         $aggregatedParents = [];
 
+        $this->inlineMemo = [];
+        $this->aggregateMemo = [];
+
         $walk = function (DOMNode $node) use (&$walk, &$textItems, &$attrItems, &$aggregatedParents): void {
             if ($node instanceof DOMElement && $this->isIgnoredElement($node)) {
                 return;
@@ -182,7 +200,12 @@ final class HtmlWalker
             }
         };
 
-        $walk($root);
+        try {
+            $walk($root);
+        } finally {
+            $this->inlineMemo = null;
+            $this->aggregateMemo = null;
+        }
     }
 
     private function isIgnored(DOMNode $node): bool
@@ -272,6 +295,18 @@ final class HtmlWalker
 
     private function hasInlineChildElements(DOMElement $element): bool
     {
+        if ($this->aggregateMemo === null) {
+            return $this->computeHasInlineChildElements($element);
+        }
+        $id = spl_object_id($element);
+        if (!array_key_exists($id, $this->aggregateMemo)) {
+            $this->aggregateMemo[$id] = $this->computeHasInlineChildElements($element);
+        }
+        return $this->aggregateMemo[$id];
+    }
+
+    private function computeHasInlineChildElements(DOMElement $element): bool
+    {
         $childCount = 0;
         // Every child — and its entire subtree — must be inline-allowed. A non-inline
         // element anywhere below (e.g. an <input> or <svg> nested in an otherwise
@@ -302,6 +337,18 @@ final class HtmlWalker
 
     /** True when $element and all of its descendant elements are allowed inline tags. */
     private function isFullyInline(DOMElement $element): bool
+    {
+        if ($this->inlineMemo === null) {
+            return $this->computeFullyInline($element);
+        }
+        $id = spl_object_id($element);
+        if (!array_key_exists($id, $this->inlineMemo)) {
+            $this->inlineMemo[$id] = $this->computeFullyInline($element);
+        }
+        return $this->inlineMemo[$id];
+    }
+
+    private function computeFullyInline(DOMElement $element): bool
     {
         if (!isset($this->allowedInlineTags[strtolower($element->nodeName)])) {
             return false;

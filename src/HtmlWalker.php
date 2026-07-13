@@ -94,11 +94,22 @@ final class HtmlWalker
         array &$textItems,
         array &$attrItems,
     ): void {
+        // The recursion below tests each element against the ignore predicate alone, not
+        // its whole ancestry: an ignored node returns immediately, so we never descend
+        // into an ignored subtree and every node we reach is already known to have no
+        // ignored ancestor within the walk. Only $root's own ancestry needs checking, and
+        // only once — collect() is public, so a caller may hand us any node. Re-walking
+        // the ancestor chain per node instead re-runs every ignoreSelector once per
+        // ancestor, work that grows with document depth.
+        if ($this->isIgnored($root)) {
+            return;
+        }
+
         /** @var array<int,DOMElement> $aggregatedParents */
         $aggregatedParents = [];
 
         $walk = function (DOMNode $node) use (&$walk, &$textItems, &$attrItems, &$aggregatedParents): void {
-            if ($this->isIgnored($node)) {
+            if ($node instanceof DOMElement && $this->isIgnoredElement($node)) {
                 return;
             }
 

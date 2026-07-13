@@ -747,4 +747,50 @@ final class I18nTranslatorTest extends TestCase
         self::assertStringContainsString('Nivel desconocido', $out);
         self::assertFalse($called);
     }
+
+    /**
+     * The collect() recursion tests each element against the ignore predicate alone
+     * rather than re-walking its whole ancestry, which is sound only because an ignored
+     * node prunes its entire subtree. These pin that pruning.
+     */
+    public function testDeeplyNestedNodeInsideIgnoredSubtreeIsNotReported(): void
+    {
+        $reported = [];
+        $i = $this->make([
+            'onMissingTranslation' => function (array $items) use (&$reported): array {
+                foreach ($items as $item) {
+                    $reported[] = $item->original;
+                }
+                return [];
+            },
+        ]);
+
+        $i->translateHtml(
+            '<div><div data-i18n-ignore><div><div><p>Hidden text</p></div></div></div><p>Visible text</p></div>'
+        );
+
+        self::assertContains('Visible text', $reported);
+        self::assertNotContains('Hidden text', $reported);
+    }
+
+    public function testDeeplyNestedNodeInsideIgnoredSelectorSubtreeIsNotReported(): void
+    {
+        $reported = [];
+        $i = $this->make([
+            'ignoreSelectors' => ['[data-secret]'],
+            'onMissingTranslation' => function (array $items) use (&$reported): array {
+                foreach ($items as $item) {
+                    $reported[] = $item->original;
+                }
+                return [];
+            },
+        ]);
+
+        $i->translateHtml(
+            '<div><section data-secret><div><p>Hidden text</p></div></section><p>Visible text</p></div>'
+        );
+
+        self::assertContains('Visible text', $reported);
+        self::assertNotContains('Hidden text', $reported);
+    }
 }

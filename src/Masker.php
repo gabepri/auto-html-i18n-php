@@ -133,12 +133,41 @@ final class Masker
         // and detect <!-- comments --> the same way the JS version does.
         /** @var VariableInfo[] $variables */
         $variables = [];
-        $masked = '';
+        /** @var string[] $parts */
+        $parts = [];
+        $chunkStart = 0;
         $i = 0;
         $len = strlen($tagProcessed);
 
         $openLen = strlen(self::IGNORE_OPEN);
         $closeLen = strlen(self::IGNORE_CLOSE);
+
+        // The next variable match at or after the scan head, cached. Probing the
+        // regex at every byte position — against a fresh substr() of the remaining
+        // string, no less — makes masking quadratic in both time and allocation,
+        // which is real CPU per request on a long page. Instead scan forward once
+        // and only re-probe when we consume a match or the head jumps a tag/region
+        // the cached match pointed into. Every offset we probe from is a UTF-8
+        // boundary (string start, end of a match, or just past an ASCII '>' or the
+        // ignore sentinel), which the /u regex requires.
+        $matchAt = -1;          // byte offset of $matchVal, or -1 when none remains
+        $matchGroups = [];      // capture groups of the cached match, as strings
+        $matchVal = '';
+        $advanceMatch = function (int $from) use ($tagProcessed, &$matchAt, &$matchGroups, &$matchVal): void {
+            if (
+                $from > strlen($tagProcessed)
+                || preg_match($this->variableRegex, $tagProcessed, $m, PREG_OFFSET_CAPTURE, $from) !== 1
+                || $m[0][0] === ''
+            ) {
+                $matchAt = -1;
+                return;
+            }
+            $matchAt = $m[0][1];
+            $matchVal = $m[0][0];
+            $matchGroups = array_map(static fn(array $g): string => $g[0], $m);
+        };
+        $advanceMatch(0);
+
         while ($i < $len) {
             // An ignored-subtree region (lifted out in phase 0) becomes one opaque
             // variable whose value is the region's verbatim markup, so it round-trips
@@ -148,10 +177,12 @@ final class Masker
                 $closeIdx = strpos($tagProcessed, self::IGNORE_CLOSE, $i + $openLen);
                 if ($closeIdx !== false) {
                     $k = (int) substr($tagProcessed, $i + $openLen, $closeIdx - ($i + $openLen));
-                    $idx = count($variables);
+                    if ($i > $chunkStart) {
+                        $parts[] = substr($tagProcessed, $chunkStart, $i - $chunkStart);
+                    }
+                    $parts[] = '{{' . count($variables) . '}}';
                     $variables[] = new VariableInfo($ignoredValues[$k] ?? '', VariableType::Ignored);
-                    $masked .= '{{' . $idx . '}}';
-                    $i = $closeIdx + $closeLen;
+                    $i = $chunkStart = $closeIdx + $closeLen;
                     continue;
                 }
             }
@@ -160,11 +191,12 @@ final class Masker
             if (substr($tagProcessed, $i, 4) === '<!--') {
                 $closeIdx = strpos($tagProcessed, '-->', $i + 4);
                 if ($closeIdx !== false) {
-                    $comment = substr($tagProcessed, $i, $closeIdx + 3 - $i);
-                    $idx = count($variables);
-                    $variables[] = new VariableInfo($comment, VariableType::Comment);
-                    $masked .= '{{' . $idx . '}}';
-                    $i = $closeIdx + 3;
+                    if ($i > $chunkStart) {
+                        $parts[] = substr($tagProcessed, $chunkStart, $i - $chunkStart);
+                    }
+                    $parts[] = '{{' . count($variables) . '}}';
+                    $variables[] = new VariableInfo(substr($tagProcessed, $i, $closeIdx + 3 - $i), VariableType::Comment);
+                    $i = $chunkStart = $closeIdx + 3;
                     continue;
                 }
             }
@@ -177,37 +209,44 @@ final class Masker
                 if ($closeIdx !== false) {
                     $tagText = substr($tagProcessed, $i, $closeIdx + 1 - $i);
                     if (preg_match('/^<\/?([a-zA-Z][\w-]*)>$/', $tagText, $mm) === 1 && isset($tagAttributes[$mm[1]])) {
-                        $masked .= $tagText;
+                        // Verbatim: leave it in the current literal chunk.
+                        $i = $closeIdx + 1;
                     } else {
-                        $idx = count($variables);
+                        if ($i > $chunkStart) {
+                            $parts[] = substr($tagProcessed, $chunkStart, $i - $chunkStart);
+                        }
+                        $parts[] = '{{' . count($variables) . '}}';
                         $variables[] = new VariableInfo($tagText, VariableType::Markup);
-                        $masked .= '{{' . $idx . '}}';
+                        $i = $chunkStart = $closeIdx + 1;
                     }
-                    $i = $closeIdx + 1;
                     continue;
                 }
             }
 
-            // Try variable regex anchored at $i
-            // PHP doesn't have a sticky flag like JS — use \G + offset
-            $haystack = substr($tagProcessed, $i);
-            if (preg_match($this->variableRegex, $haystack, $m, 0, 0) === 1 && isset($m[0]) && $m[0] !== '') {
-                // Match must be anchored at position 0 of the substring.
-                // preg_match without anchor returns the leftmost match which may be after offset 0;
-                // we need to verify it began exactly at offset 0.
-                if (strpos($haystack, $m[0]) === 0) {
-                    $idx = count($variables);
-                    $variables[] = $this->buildVariableInfo($m);
-                    $masked .= '{{' . $idx . '}}';
-                    $i += strlen($m[0]);
-                    continue;
-                }
+            // A variable match, if one starts exactly here. The cached lookahead only
+            // goes stale when the head jumps a tag/region it pointed into.
+            if ($matchAt !== -1 && $matchAt < $i) {
+                $advanceMatch($i);
             }
 
-            // Default: copy one byte
-            $masked .= $tagProcessed[$i];
+            if ($matchAt === $i) {
+                if ($i > $chunkStart) {
+                    $parts[] = substr($tagProcessed, $chunkStart, $i - $chunkStart);
+                }
+                $parts[] = '{{' . count($variables) . '}}';
+                $variables[] = $this->buildVariableInfo($matchGroups);
+                $i = $chunkStart = $i + strlen($matchVal);
+                $advanceMatch($i);
+                continue;
+            }
+
+            // Literal byte — stays in the pending chunk.
             $i++;
         }
+        if ($len > $chunkStart) {
+            $parts[] = substr($tagProcessed, $chunkStart, $len - $chunkStart);
+        }
+        $masked = implode('', $parts);
 
         $casePattern = self::detectCasePattern($masked);
         if ($casePattern === CasePattern::Upper) {

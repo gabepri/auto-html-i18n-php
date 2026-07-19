@@ -80,10 +80,10 @@ final class I18nTranslator
 
         $detect = is_callable($merged['isUnrenderedValue'])
             ? Closure::fromCallable($merged['isUnrenderedValue'])
-            : static fn(string $masked, string $original): bool => Unrendered::isUnrenderedValue($masked);
+            : static fn (string $masked, string $original): bool => Unrendered::isUnrenderedValue($masked);
         $this->isUnrendered = ((bool) $merged['skipUnrenderedValues'])
             ? $detect
-            : static fn(string $masked, string $original): bool => false;
+            : static fn (string $masked, string $original): bool => false;
 
         $this->store = new Store();
         if (is_array($merged['initialCache']) && $merged['initialCache'] !== []) {
@@ -277,7 +277,7 @@ final class I18nTranslator
         }
         $out = preg_replace_callback(
             '/\{\{(\d+)\}\}/',
-            static fn(array $m): string => $variables[(int) $m[1]] ?? '{{' . $m[1] . '}}',
+            static fn (array $m): string => $variables[(int) $m[1]] ?? '{{' . $m[1] . '}}',
             $translated,
         );
         return is_string($out) ? $out : $translated;

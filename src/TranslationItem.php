@@ -27,7 +27,7 @@ final class TranslationItem
         $out = [
             'masked' => $this->masked,
             'original' => $this->original,
-            'variables' => array_map(static fn(VariableInfo $v) => $v->toArray(), $this->variables),
+            'variables' => array_map(static fn (VariableInfo $v) => $v->toArray(), $this->variables),
         ];
         if ($this->scope !== null) {
             $out['scope'] = $this->scope;

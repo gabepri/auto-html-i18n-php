@@ -164,7 +164,7 @@ final class Masker
             }
             $matchAt = $m[0][1];
             $matchVal = $m[0][0];
-            $matchGroups = array_map(static fn(array $g): string => $g[0], $m);
+            $matchGroups = array_map(static fn (array $g): string => $g[0], $m);
         };
         $advanceMatch(0);
 
@@ -756,7 +756,7 @@ final class Masker
      */
     private static function sortLongestFirst(array $entries): array
     {
-        usort($entries, static fn(IgnoreWordEntry $a, IgnoreWordEntry $b): int => strlen($b->word) - strlen($a->word));
+        usort($entries, static fn (IgnoreWordEntry $a, IgnoreWordEntry $b): int => strlen($b->word) - strlen($a->word));
         return $entries;
     }
 

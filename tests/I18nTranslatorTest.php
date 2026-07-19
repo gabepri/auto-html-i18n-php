@@ -21,14 +21,14 @@ final class I18nTranslatorTest extends TestCase
     {
         return new I18nTranslator(array_merge([
             'locale' => 'es',
-            'onMissingTranslation' => fn(array $items, string $locale): array => [],
+            'onMissingTranslation' => fn (array $items, string $locale): array => [],
         ], $extra));
     }
 
     public function testRequiresLocale(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        new I18nTranslator(['onMissingTranslation' => fn() => []]);
+        new I18nTranslator(['onMissingTranslation' => fn () => []]);
     }
 
     public function testRequiresOnMissingTranslation(): void
@@ -144,7 +144,7 @@ final class I18nTranslatorTest extends TestCase
         ]);
         $i->translateHtml('<p>hello world</p><p>good morning</p><p>see you later</p>');
         self::assertCount(3, $captured);
-        $masks = array_map(fn(TranslationItem $i) => $i->masked, $captured);
+        $masks = array_map(fn (TranslationItem $i) => $i->masked, $captured);
         self::assertContains('hello world', $masks);
         self::assertContains('good morning', $masks);
         self::assertContains('see you later', $masks);
@@ -170,7 +170,7 @@ final class I18nTranslatorTest extends TestCase
     public function testTranslateHtmlPreservesUnknownStrings(): void
     {
         $i = $this->make([
-            'onMissingTranslation' => fn(array $items, string $locale): array => [],
+            'onMissingTranslation' => fn (array $items, string $locale): array => [],
         ]);
         $out = $i->translateHtml('<p>untranslated text</p>');
         self::assertStringContainsString('untranslated text', $out);
@@ -389,7 +389,7 @@ final class I18nTranslatorTest extends TestCase
     public function testTranslateHtmlPreservesAllCaps(): void
     {
         $i = $this->make([
-            'onMissingTranslation' => fn(array $items, string $locale): array => [
+            'onMissingTranslation' => fn (array $items, string $locale): array => [
                 'click here' => 'haz clic aquí',
             ],
         ]);
@@ -438,7 +438,7 @@ final class I18nTranslatorTest extends TestCase
             },
         ]);
         $i->translateHtml('<p>hello world <code>do not translate</code></p>');
-        $masks = array_map(fn(TranslationItem $i) => $i->masked, $captured);
+        $masks = array_map(fn (TranslationItem $i) => $i->masked, $captured);
         // The <code> contents should be skipped; only the aggregated <p> innerHTML is offered
         foreach ($masks as $m) {
             self::assertStringNotContainsString('do not translate', $m);
@@ -463,7 +463,7 @@ final class I18nTranslatorTest extends TestCase
             . '<span class="fk-decorator"><span class="fk-icon"><svg viewBox="0 0 24 24"><path d="m10 14"></path></svg></span></span>'
             . '</span><span class="fk-label">Environmental</span></label>'
         );
-        $masks = array_map(fn(TranslationItem $it) => $it->masked, $captured);
+        $masks = array_map(fn (TranslationItem $it) => $it->masked, $captured);
         self::assertContains('Environmental', $masks);
         foreach ($masks as $m) {
             self::assertStringNotContainsString('<svg', $m);
@@ -484,7 +484,7 @@ final class I18nTranslatorTest extends TestCase
             },
         ]);
         $i->translateHtml('<nav><a href="/a">Home</a><a href="/b">About</a></nav>');
-        $masks = array_map(fn(TranslationItem $it) => $it->masked, $captured);
+        $masks = array_map(fn (TranslationItem $it) => $it->masked, $captured);
         self::assertCount(2, $masks);
         self::assertContains('Home', $masks);
         self::assertContains('About', $masks);
@@ -505,7 +505,7 @@ final class I18nTranslatorTest extends TestCase
             },
         ]);
         $i->translateHtml('<p><b>Hello</b><i>World</i></p>');
-        $masks = array_map(fn(TranslationItem $it) => $it->masked, $captured);
+        $masks = array_map(fn (TranslationItem $it) => $it->masked, $captured);
         self::assertCount(2, $masks);
         self::assertContains('Hello', $masks);
         self::assertContains('World', $masks);
@@ -515,7 +515,7 @@ final class I18nTranslatorTest extends TestCase
     {
         // Each link's text is translated in place and its <a href> preserved.
         $i = $this->make([
-            'onMissingTranslation' => fn(array $items, string $locale): array => ['Home' => 'Inicio'],
+            'onMissingTranslation' => fn (array $items, string $locale): array => ['Home' => 'Inicio'],
         ]);
         $out = $i->translateHtml('<nav><a href="/a">Home</a></nav>');
         self::assertStringContainsString('<a href="/a">Inicio</a>', $out);
@@ -533,7 +533,7 @@ final class I18nTranslatorTest extends TestCase
             },
         ]);
         $i->translateHtml('<nav><a href="/">Home</a> / <a href="/p">Products</a></nav>');
-        $masks = array_map(fn(TranslationItem $it) => $it->masked, $captured);
+        $masks = array_map(fn (TranslationItem $it) => $it->masked, $captured);
         self::assertCount(1, $masks);
         self::assertStringContainsString('<a0>Home</a0>', $masks[0]);
         self::assertStringContainsString('<a1>Products</a1>', $masks[0]);
@@ -549,7 +549,7 @@ final class I18nTranslatorTest extends TestCase
             },
         ]);
         $i->translateHtml('<p>hello</p><p data-i18n-ignore>do not translate</p>');
-        $masks = array_map(fn(TranslationItem $i) => $i->masked, $captured);
+        $masks = array_map(fn (TranslationItem $i) => $i->masked, $captured);
         self::assertContains('hello', $masks);
         self::assertNotContains('do not translate', $masks);
     }
@@ -588,7 +588,7 @@ final class I18nTranslatorTest extends TestCase
     public function testSetLocaleSwitchesCacheLookups(): void
     {
         $i = $this->make([
-            'onMissingTranslation' => fn(array $items, string $locale): array => match ($locale) {
+            'onMissingTranslation' => fn (array $items, string $locale): array => match ($locale) {
                 'es' => ['hello world' => 'hola mundo'],
                 'fr' => ['hello world' => 'bonjour le monde'],
                 default => [],
@@ -619,7 +619,7 @@ final class I18nTranslatorTest extends TestCase
     {
         $i = $this->make([
             'ignoreWords' => ['Mary'],
-            'onMissingTranslation' => fn(array $items, string $locale): array => [],
+            'onMissingTranslation' => fn (array $items, string $locale): array => [],
         ]);
         self::assertSame(['Mary'], $i->getIgnoreWords());
         $i->addIgnoreWords(['Bob']);
@@ -635,7 +635,7 @@ final class I18nTranslatorTest extends TestCase
     public function testDisallowedTagsAreEscapedInTranslatedOutput(): void
     {
         $i = $this->make([
-            'onMissingTranslation' => fn(array $items, string $locale): array => [
+            'onMissingTranslation' => fn (array $items, string $locale): array => [
                 'hello' => 'hola <script>alert(1)</script>',
             ],
         ]);
@@ -647,7 +647,7 @@ final class I18nTranslatorTest extends TestCase
     public function testWhitespaceIsPreservedInTranslatedText(): void
     {
         $i = $this->make([
-            'onMissingTranslation' => fn(array $items, string $locale): array => [
+            'onMissingTranslation' => fn (array $items, string $locale): array => [
                 'hello world' => 'hola mundo',
             ],
         ]);
@@ -666,7 +666,7 @@ final class I18nTranslatorTest extends TestCase
     public function testScopedTranslationResolvedFromAncestor(): void
     {
         $i = $this->make([
-            'onMissingTranslation' => fn(array $items, string $locale): array => [
+            'onMissingTranslation' => fn (array $items, string $locale): array => [
                 'greeting' => ['formal' => 'Bienvenido', 'casual' => 'Hola'],
             ],
         ]);
@@ -681,7 +681,7 @@ final class I18nTranslatorTest extends TestCase
         $captured = [];
         $i = $this->make([
             'onMissingTranslation' => function (array $items, string $locale) use (&$captured): array {
-                $captured = array_map(static fn(TranslationItem $item): string => $item->masked, $items);
+                $captured = array_map(static fn (TranslationItem $item): string => $item->masked, $items);
                 return [];
             },
         ]);
@@ -706,7 +706,7 @@ final class I18nTranslatorTest extends TestCase
         $i = $this->make([
             'skipUnrenderedValues' => false,
             'onMissingTranslation' => function (array $items, string $locale) use (&$captured): array {
-                $captured = array_map(static fn(TranslationItem $item): string => $item->masked, $items);
+                $captured = array_map(static fn (TranslationItem $item): string => $item->masked, $items);
                 return [];
             },
         ]);
@@ -720,10 +720,10 @@ final class I18nTranslatorTest extends TestCase
         $captured = [];
         $i = $this->make([
             // A corpus whose copy legitimately says "null": only "undefined" is an artifact.
-            'isUnrenderedValue' => static fn(string $masked, string $original): bool
+            'isUnrenderedValue' => static fn (string $masked, string $original): bool
                 => preg_match('/\bundefined\b/', $masked) === 1,
             'onMissingTranslation' => function (array $items, string $locale) use (&$captured): array {
-                $captured = array_map(static fn(TranslationItem $item): string => $item->masked, $items);
+                $captured = array_map(static fn (TranslationItem $item): string => $item->masked, $items);
                 return [];
             },
         ]);

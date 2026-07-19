@@ -33,7 +33,7 @@ final class FixtureTest extends TestCase
         self::assertSame($expected['masked'], $result->masked, "masked mismatch for: $name");
 
         $expectedVars = $expected['variables'] ?? [];
-        $actualVars = array_map(static fn($v) => $v->toArray(), $result->variables);
+        $actualVars = array_map(static fn ($v) => $v->toArray(), $result->variables);
         self::assertSame(self::normalizeVars($expectedVars), $actualVars, "variables mismatch for: $name");
 
         $expectedTagAttrs = $expected['tagAttributes'] ?? [];
@@ -100,7 +100,7 @@ final class FixtureTest extends TestCase
 
         $masker = new Masker($ignoreWords, $allowedTags);
         $vars = array_map(
-            static fn(array $v): VariableInfo => new VariableInfo(
+            static fn (array $v): VariableInfo => new VariableInfo(
                 (string) $v['value'],
                 VariableType::from((string) $v['type']),
                 $v['meta'] ?? null,
@@ -169,7 +169,7 @@ final class FixtureTest extends TestCase
 
         $masker = new Masker($ignoreWords, $allowedTags);
         $vars = array_map(
-            static fn(array $v): VariableInfo => new VariableInfo(
+            static fn (array $v): VariableInfo => new VariableInfo(
                 (string) $v['value'],
                 VariableType::from((string) $v['type']),
                 $v['meta'] ?? null,

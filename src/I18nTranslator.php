@@ -423,7 +423,7 @@ final class I18nTranslator
      */
     private function walkFragment(\DOMDocumentFragment $fragment, callable $onText, callable $onAttribute): void
     {
-        /** @var array<int,array{0:DOMElement,1:string,2:?string,3:?string,4:bool}> $textItems */
+        /** @var array<int,array{0:DOMElement,1:string,2:?string,3:?string,4:bool,5:?DOMText}> $textItems */
         $textItems = [];
         /** @var array<int,array{0:DOMElement,1:string,2:string,3:?string}> $attrItems */
         $attrItems = [];

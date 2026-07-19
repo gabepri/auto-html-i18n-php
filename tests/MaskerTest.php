@@ -15,6 +15,9 @@ final class MaskerTest extends TestCase
 {
     private const ALLOWED = ['a', 'b', 'i', 'u', 'strong', 'em', 'span', 'small', 'mark', 'del'];
 
+    /**
+     * @param array<string|array{word:string,meta?:array<string,string>}|\AutoHtmlI18n\IgnoreWordEntry> $ignoreWords
+     */
     private function masker(array $ignoreWords = []): Masker
     {
         return new Masker($ignoreWords, self::ALLOWED);

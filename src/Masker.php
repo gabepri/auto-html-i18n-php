@@ -234,7 +234,7 @@ final class Masker
                     $parts[] = substr($tagProcessed, $chunkStart, $i - $chunkStart);
                 }
                 $parts[] = '{{' . count($variables) . '}}';
-                $variables[] = $this->buildVariableInfo($matchGroups);
+                $variables[] = $this->buildVariableInfo($matchGroups, $matchVal);
                 $i = $chunkStart = $i + strlen($matchVal);
                 $advanceMatch($i);
                 continue;
@@ -600,9 +600,13 @@ final class Masker
     }
 
     /**
-     * @param array<int|string,string|null> $match
+     * Capture groups of a variable-regex match, as produced by the `$advanceMatch`
+     * closure in mask(). Unmatched groups come through as ''. The full match is
+     * passed separately as $value, since only the sub-groups select the type.
+     *
+     * @param array<int|string,string> $match
      */
-    private function buildVariableInfo(array $match): VariableInfo
+    private function buildVariableInfo(array $match, string $value): VariableInfo
     {
         // Determine which capturing group matched to infer the variable type
         for ($g = 0, $n = count($this->groupTypeMap); $g < $n; $g++) {
@@ -611,18 +615,18 @@ final class Masker
                 $type = $this->groupTypeMap[$g];
                 if ($type === VariableType::IgnoreWord) {
                     foreach ($this->ignoreWords as $w) {
-                        if ($w->word === $match[0]) {
+                        if ($w->word === $value) {
                             if ($w->meta !== null) {
-                                return new VariableInfo($match[0], $type, $w->meta);
+                                return new VariableInfo($value, $type, $w->meta);
                             }
                             break;
                         }
                     }
                 }
-                return new VariableInfo($match[0], $type);
+                return new VariableInfo($value, $type);
             }
         }
-        return new VariableInfo($match[0], VariableType::Symbol);
+        return new VariableInfo($value, VariableType::Symbol);
     }
 
     /**
@@ -776,9 +780,6 @@ final class Masker
             PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL,
         )) {
             foreach ($matches as $m) {
-                if (!isset($m[1]) || $m[1] === '') {
-                    continue;
-                }
                 $attrs[$m[1]] = $m[2] ?? $m[3] ?? $m[4] ?? '';
             }
         }

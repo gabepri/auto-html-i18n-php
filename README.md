@@ -236,12 +236,24 @@ Tests include a fixture-driven suite (`tests/FixtureTest.php`) that runs the sam
 
 ### Static analysis level
 
-[`phpstan.neon.dist`](phpstan.neon.dist) pins **level 3** — the highest level that passes with zero errors
+[`phpstan.neon.dist`](phpstan.neon.dist) pins **level 8** — the highest level that passes with zero errors
 and zero suppressions. There is deliberately no baseline: a baseline would let a higher number hide the
 same findings.
 
-Level 4 (dead-code detection) currently reports guards in `src/` that are unreachable. Raising the level
-means dealing with those guards on their merits, not suppressing the report.
+Two things make level 8 reachable:
+
+- **`treatPhpDocTypesAsCertain: false`.** Several guards in `src/` defend against values that a *vendor's
+  PHPDoc* claims are impossible but that the runtime can still produce — `Masterminds\HTML5::loadHTMLFragment()`
+  returning a non-fragment (`HtmlWalker`, `I18nTranslator`) and `MessageFormatter::create()` returning `null`
+  (`Masker`). An annotation is not a runtime guarantee, so the guards stay and PHPStan is told not to trust
+  the annotation.
+- **Removing guards that were dead by this code's own logic** — the `DOMElement` loop condition and trailing
+  `return null` in `HtmlWalker::findAggregationTarget()`, the `ownerDocument === null` check in
+  `HtmlWalker::replaceTextNode()` (mutually exclusive with the `parentNode === null` check above it), and the
+  empty-capture-group skip in `Masker::parseAttributes()` (group 1 of that regex always matches ≥1 char).
+
+Level 9 (`mixed` strictness) is not enabled: it needs ~34 typing fixes in `tests/FixtureTest.php` around
+`json_decode()` results plus 10 in `I18nTranslator`, which is mostly noise in test scaffolding.
 
 ### Code style
 

@@ -275,7 +275,7 @@ final class HtmlWalker
     private function findAggregationTarget(DOMElement $element): ?DOMElement
     {
         $current = $element;
-        while ($current instanceof DOMElement) {
+        while (true) {
             if ($this->hasInlineChildElements($current)) {
                 return $current;
             }
@@ -290,7 +290,6 @@ final class HtmlWalker
             }
             return null;
         }
-        return null;
     }
 
     private function hasInlineChildElements(DOMElement $element): bool
@@ -494,9 +493,6 @@ final class HtmlWalker
             return;
         }
         $doc = $node->ownerDocument;
-        if ($doc === null) {
-            return;
-        }
         $parser = new HTML5();
         $fragment = $parser->loadHTMLFragment($html, ['target_document' => $doc]);
         if (!$fragment instanceof DOMDocumentFragment) {

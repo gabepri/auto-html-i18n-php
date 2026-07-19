@@ -2,7 +2,7 @@
 #
 # Do not add a baseline to fake a higher number: fix the code or leave the level.
 parameters:
-    level: 3
+    level: 8
     paths:
         - src
         - tests

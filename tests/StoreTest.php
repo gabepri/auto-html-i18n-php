@@ -62,6 +62,29 @@ final class StoreTest extends TestCase
         self::assertTrue($s->isResolved('en', 'k'));
     }
 
+    public function testMarkReportedOnAlreadyReportedEntryMutatesInPlace(): void
+    {
+        $s = new Store();
+        $s->markReported('en', 'k');
+        $first = $s->get('en', 'k');
+        $s->markReported('en', 'k');
+        $second = $s->get('en', 'k');
+        self::assertSame($first, $second);
+        self::assertNotNull($second);
+        self::assertSame(EntryStatus::Reported, $second->status);
+    }
+
+    public function testHas(): void
+    {
+        $s = new Store();
+        self::assertFalse($s->has('en', 'k'));
+        $s->markReported('en', 'k');
+        self::assertTrue($s->has('en', 'k'));
+        self::assertFalse($s->isResolved('en', 'k'));
+        $s->set('en', 'k2', 'v');
+        self::assertTrue($s->has('en', 'k2'));
+    }
+
     public function testGetCacheReturnsOnlyResolved(): void
     {
         $s = new Store();

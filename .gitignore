@@ -3,3 +3,5 @@ vendor/
 .phpunit.result.cache
 composer.lock
 coverage/
+.php-cs-fixer.cache
+.phpstan.cache/

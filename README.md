@@ -222,10 +222,34 @@ Both ports honor the same `data-i18n-*` input attributes (`-key`, `-scope`, `-ig
 
 ```bash
 composer install
-vendor/bin/phpunit
+composer test           # PHPUnit
+composer test:coverage  # PHPUnit with a text coverage report
+composer analyse        # PHPStan static analysis (src/ + tests/)
+composer lint           # PHP-CS-Fixer style check (no writes)
+composer lint:fix       # PHP-CS-Fixer, applying fixes
 ```
 
+`composer test:coverage` sets `XDEBUG_MODE=coverage` for you. Running `vendor/bin/phpunit --coverage-text`
+directly reports nothing under Xdebug 3, which defaults to `develop` mode.
+
 Tests include a fixture-driven suite (`tests/FixtureTest.php`) that runs the same Masker assertions as the JS package against the shared corpus in [`fixtures/masker/`](../../fixtures/masker/). Adding a fixture there exercises both ports immediately.
+
+### Static analysis level
+
+[`phpstan.neon.dist`](phpstan.neon.dist) pins **level 3** — the highest level that passes with zero errors
+and zero suppressions. There is deliberately no baseline: a baseline would let a higher number hide the
+same findings.
+
+Level 4 (dead-code detection) currently reports guards in `src/` that are unreachable. Raising the level
+means dealing with those guards on their merits, not suppressing the report.
+
+### Code style
+
+[`.php-cs-fixer.dist.php`](.php-cs-fixer.dist.php) applies `@PSR12` plus `declare_strict_types` (every
+file in `src/` and `tests/` already declares it). The config is currently **not** satisfied by the
+codebase: `composer lint` reports 7 of 27 files, all from a single rule — PSR-12 wants `fn (` where the
+codebase writes `fn(` (35 occurrences). Run `composer lint:fix` to normalize; it was left unapplied so
+the style sweep lands as its own commit rather than burying functional changes.
 
 ## License
 

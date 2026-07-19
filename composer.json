@@ -14,6 +14,8 @@
         "masterminds/html5": "^2.8"
     },
     "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "phpstan/phpstan": "^2.1",
         "phpunit/phpunit": "^10.5"
     },
     "autoload": {
@@ -25,6 +27,20 @@
         "psr-4": {
             "AutoHtmlI18n\\Tests\\": "tests/"
         }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:coverage": "XDEBUG_MODE=coverage phpunit --coverage-text",
+        "analyse": "phpstan analyse",
+        "lint": "php-cs-fixer check --diff",
+        "lint:fix": "php-cs-fixer fix"
+    },
+    "scripts-descriptions": {
+        "test": "Run the PHPUnit test suite",
+        "test:coverage": "Run the test suite with a text coverage report",
+        "analyse": "Run PHPStan static analysis over src/ and tests/",
+        "lint": "Check code style with PHP-CS-Fixer (no changes written)",
+        "lint:fix": "Apply PHP-CS-Fixer code style fixes"
     },
     "config": {
         "sort-packages": true

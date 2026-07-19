@@ -773,7 +773,7 @@ final class Masker
             '/(\w[\w-]*)(?:\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|(\S+)))?/',
             $attrString,
             $matches,
-            PREG_SET_ORDER,
+            PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL,
         )) {
             foreach ($matches as $m) {
                 if (!isset($m[1]) || $m[1] === '') {

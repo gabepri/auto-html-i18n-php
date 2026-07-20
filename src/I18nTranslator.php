@@ -26,6 +26,38 @@ use InvalidArgumentException;
  *   isUnrenderedValue (callable(string $masked, string $original): bool, default:
  *     Unrendered::isUnrenderedValue) — overrides that detection
  *   debug (bool, default: false)
+ *
+ * The shape below is the machine-readable form of that list. Consumers running PHPStan get
+ * key-name typo detection and per-key value types for free; import it with
+ * `@phpstan-import-type I18nTranslatorConfig from \AutoHtmlI18n\I18nTranslator`.
+ *
+ * `onMissingTranslation` is deliberately typed as a bare `callable` rather than with its full
+ * signature: it is the one config value whose *return* crosses back from consumer code, and
+ * annotating that return would let the analyser treat it as proven, deleting the runtime guards
+ * that exist precisely because an annotation is not a runtime guarantee (see
+ * {@see self::narrowTranslation()}). The signature it is called with is documented above.
+ *
+ * `I18nTranslatorOptions` is the same list with *every* key optional — the type to use for a
+ * partial config you merge into a base one.
+ *
+ * @phpstan-type I18nTranslatorOptions array{
+ *     locale?: string,
+ *     onMissingTranslation?: callable,
+ *     allowedInlineTags?: list<string>,
+ *     translatableAttributes?: list<string>,
+ *     ignoreSelectors?: list<string>,
+ *     ignoreWords?: array<string|array{word:string,meta?:array<string,string>}|IgnoreWordEntry>,
+ *     initialCache?: array<string,string|array<string,string>>,
+ *     originalAttribute?: string,
+ *     pendingAttribute?: string,
+ *     keyAttribute?: string,
+ *     ignoreAttribute?: string,
+ *     scopeAttribute?: string,
+ *     skipUnrenderedValues?: bool,
+ *     isUnrenderedValue?: (callable(string, string): bool)|null,
+ *     debug?: bool,
+ * }
+ * @phpstan-type I18nTranslatorConfig I18nTranslatorOptions&array{locale: string, onMissingTranslation: callable}
  */
 final class I18nTranslator
 {
@@ -47,6 +79,10 @@ final class I18nTranslator
 
     private string $locale;
 
+    /**
+     * Called as `(list<TranslationItem> $items, string $locale)`. The return value is consumer
+     * data and is narrowed at runtime, not trusted from an annotation.
+     */
     private readonly Closure $onMissingTranslation;
 
     private readonly Store $store;
@@ -57,11 +93,13 @@ final class I18nTranslator
     /**
      * Recognizes a mask captured from a half-rendered UI, which must never be reported.
      * Always false when the consumer turns the gate off.
+     *
+     * @var Closure(string, string): bool
      */
     private readonly Closure $isUnrendered;
 
     /**
-     * @param array<string,mixed> $config
+     * @param I18nTranslatorConfig $config
      */
     public function __construct(array $config)
     {
@@ -223,8 +261,8 @@ final class I18nTranslator
 
             foreach ($items as $item) {
                 if (array_key_exists($item->masked, $result)) {
-                    $value = $result[$item->masked];
-                    if (is_string($value) || is_array($value)) {
+                    $value = self::narrowTranslation($result[$item->masked]);
+                    if ($value !== null) {
                         $this->store->set($this->locale, $item->masked, $value);
                     }
                 } else {
@@ -450,6 +488,35 @@ final class I18nTranslator
     private function isReportable(string $masked, string $original): bool
     {
         return !($this->isUnrendered)($masked, $original);
+    }
+
+    /**
+     * Narrow one value returned by the consumer's `onMissingTranslation` to something the
+     * {@see Store} can hold: a plain string, or a scope map of strings.
+     *
+     * The callback is user-supplied, so its return value is genuinely unknown at runtime —
+     * no annotation can promise otherwise. Anything that is neither a string nor an array is
+     * skipped (leaving the key un-stored *and* un-reported, so it is offered again on the next
+     * pass); non-string entries inside a scope map are dropped rather than carried into the
+     * store, where they would only fatal later at apply time.
+     *
+     * @return string|array<string,string>|null null when the value is not storable at all
+     */
+    private static function narrowTranslation(mixed $value): string|array|null
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+        if (!is_array($value)) {
+            return null;
+        }
+        $map = [];
+        foreach ($value as $scope => $text) {
+            if (is_string($text)) {
+                $map[(string) $scope] = $text;
+            }
+        }
+        return $map;
     }
 
     private static function hasTranslatableContent(string $masked): bool

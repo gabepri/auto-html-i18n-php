@@ -11,11 +11,13 @@ use PHPUnit\Framework\TestCase;
 /**
  * Edge-path coverage for I18nTranslator: attribute short-circuits, the pending
  * write-back guards, the debug payload, and the small accessors.
+ *
+ * @phpstan-import-type I18nTranslatorOptions from I18nTranslator
  */
 final class I18nTranslatorCoverageTest extends TestCase
 {
     /**
-     * @param array<string,mixed> $extra
+     * @param I18nTranslatorOptions $extra
      */
     private function make(array $extra = []): I18nTranslator
     {
@@ -125,6 +127,42 @@ final class I18nTranslatorCoverageTest extends TestCase
 
         self::assertStringContainsString('Hello world', $out);
         self::assertNull($i->getTranslation('Hello world'));
+    }
+
+    public function testCallbackValueThatIsNeitherStringNorMapIsSkippedAndNotMarkedReported(): void
+    {
+        $calls = 0;
+        $i = $this->make([
+            // Deliberately violates the documented contract: the value is a number.
+            'onMissingTranslation' => static function (array $items, string $locale) use (&$calls): array {
+                $calls++;
+
+                return ['Hello world' => 42];
+            },
+        ]);
+
+        $out = $i->translateHtml('<p>Hello world</p>');
+        self::assertStringContainsString('Hello world', $out);
+        self::assertNull($i->getTranslation('Hello world'));
+
+        // Present-but-unusable is not the same as missing: the key is left un-reported,
+        // so it is offered to the callback again on the next pass.
+        $i->translateHtml('<p>Hello world</p>');
+        self::assertSame(2, $calls);
+    }
+
+    public function testCallbackScopeMapDropsNonStringEntriesButKeepsTheRest(): void
+    {
+        $i = $this->make([
+            'onMissingTranslation' => static fn (array $items, string $locale): array => [
+                'Hello world' => ['formal' => 'Hola mundo', 'casual' => 99],
+            ],
+        ]);
+
+        $out = $i->translateHtml('<p data-i18n-scope="formal">Hello world</p>');
+
+        self::assertStringContainsString('Hola mundo', $out);
+        self::assertSame(['formal' => 'Hola mundo'], $i->getTranslation('Hello world'));
     }
 
     public function testPendingWriteBackSkipsScopeKeyedValueThatDoesNotMatchTheScope(): void

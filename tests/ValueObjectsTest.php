@@ -138,7 +138,6 @@ final class ValueObjectsTest extends TestCase
 
     public function testIgnoreWordEntryNormalizeDropsEmptyWords(): void
     {
-        /** @phpstan-ignore-next-line intentionally malformed input */
         $out = IgnoreWordEntry::normalize(['A', ['word' => ''], ['word' => 'B'], new IgnoreWordEntry('')]);
         self::assertSame(['A', 'B'], array_map(static fn (IgnoreWordEntry $e) => $e->word, $out));
     }

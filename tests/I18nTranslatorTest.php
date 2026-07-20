@@ -12,10 +12,13 @@ use AutoHtmlI18n\VariableType;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * @phpstan-import-type I18nTranslatorOptions from I18nTranslator
+ */
 final class I18nTranslatorTest extends TestCase
 {
     /**
-     * @param array<string,mixed> $extra
+     * @param I18nTranslatorOptions $extra
      */
     private function make(array $extra = []): I18nTranslator
     {
@@ -25,16 +28,28 @@ final class I18nTranslatorTest extends TestCase
         ], $extra));
     }
 
+    /**
+     * Construct from a config that deliberately violates the declared shape, to exercise the
+     * constructor's runtime guards. The shape makes such a config unrepresentable statically —
+     * which is the point of it — so these tests go through reflection instead.
+     *
+     * @param array<string,mixed> $config
+     */
+    private static function makeUnchecked(array $config): I18nTranslator
+    {
+        return (new \ReflectionClass(I18nTranslator::class))->newInstanceArgs([$config]);
+    }
+
     public function testRequiresLocale(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        new I18nTranslator(['onMissingTranslation' => fn () => []]);
+        self::makeUnchecked(['onMissingTranslation' => fn () => []]);
     }
 
     public function testRequiresOnMissingTranslation(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        new I18nTranslator(['locale' => 'es']);
+        self::makeUnchecked(['locale' => 'es']);
     }
 
     public function testGetDirectionUsesInstanceLocaleByDefault(): void

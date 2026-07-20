@@ -2,7 +2,7 @@
 #
 # Do not add a baseline to fake a higher number: fix the code or leave the level.
 parameters:
-    level: 8
+    level: 9
     paths:
         - src
         - tests
@@ -12,7 +12,6 @@ parameters:
     # we keep the guards and tell PHPStan not to treat those annotations as certain.
     treatPhpDocTypesAsCertain: false
     # tests/ValueObjectsTest.php carries @phpstan-ignore-next-line comments for
-    # deliberately malformed inputs. Those errors are only *reported* at level 5+,
-    # so at level 3 the comments look unmatched. This keeps them forward-compatible
-    # rather than deleting them; it hides no actual analysis error.
-    reportUnmatchedIgnoredErrors: false
+    # deliberately malformed inputs. At level 9 every one of them matches a real
+    # error, so an unmatched ignore now means the comment is stale — fail on it.
+    reportUnmatchedIgnoredErrors: true

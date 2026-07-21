@@ -1,6 +1,8 @@
 # Static analysis for the PHP port.
 #
 # Do not add a baseline to fake a higher number: fix the code or leave the level.
+includes:
+    - phar://phpstan.phar/conf/bleedingEdge.neon
 parameters:
     level: 9
     paths:

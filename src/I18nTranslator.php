@@ -57,7 +57,23 @@ use InvalidArgumentException;
  *     isUnrenderedValue?: (callable(string, string): bool)|null,
  *     debug?: bool,
  * }
- * @phpstan-type I18nTranslatorConfig I18nTranslatorOptions&array{locale: string, onMissingTranslation: callable}
+ * @phpstan-type I18nTranslatorConfig array{
+ *     locale: string,
+ *     onMissingTranslation: callable,
+ *     allowedInlineTags?: list<string>,
+ *     translatableAttributes?: list<string>,
+ *     ignoreSelectors?: list<string>,
+ *     ignoreWords?: array<string|array{word:string,meta?:array<string,string>}|IgnoreWordEntry>,
+ *     initialCache?: array<string,string|array<string,string>>,
+ *     originalAttribute?: string,
+ *     pendingAttribute?: string,
+ *     keyAttribute?: string,
+ *     ignoreAttribute?: string,
+ *     scopeAttribute?: string,
+ *     skipUnrenderedValues?: bool,
+ *     isUnrenderedValue?: (callable(string, string): bool)|null,
+ *     debug?: bool,
+ * }
  */
 final class I18nTranslator
 {

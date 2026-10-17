@@ -92,9 +92,9 @@ final class Masker
         $tagProcessed = preg_replace_callback(
             '/<(\/)?([a-zA-Z][\w-]*)((?:\s[^>]*?)?)\s*(\/)?>/',
             function (array $m) use (&$tagAttributes, &$tagCounters, &$openStack): string {
-                $closing = ($m[1] ?? '') !== '';
+                $closing = $m[1] !== '';
                 $lower = strtolower($m[2]);
-                $attrString = $m[3] ?? '';
+                $attrString = $m[3];
                 $selfClosing = ($m[4] ?? '') !== '';
                 if (!isset($this->allowedInlineTags[$lower])) {
                     return $m[0]; // non-allowed — leave raw for phase 2 to mask as markup

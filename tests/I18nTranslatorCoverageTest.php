@@ -89,12 +89,12 @@ final class I18nTranslatorCoverageTest extends TestCase
         ]);
 
         $i->translateHtml('<img alt="A photo of a cat" src="/x.png">');
-        self::assertSame(1, $calls);
+        $callsAfterFirstPass = $calls;
 
         // Second pass: the key is marked reported, so nothing is batched at all
         // and onMissingTranslation is not called again.
         $out = $i->translateHtml('<img alt="A photo of a cat" src="/x.png">');
-        self::assertSame(1, $calls);
+        self::assertSame([1, 1], [$callsAfterFirstPass, $calls]);
         self::assertStringContainsString('alt="A photo of a cat"', $out);
     }
 

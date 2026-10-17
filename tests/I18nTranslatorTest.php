@@ -579,10 +579,10 @@ final class I18nTranslatorTest extends TestCase
             },
         ]);
         $i->translateHtml('<p>hello world</p>');
-        self::assertSame(1, $callCount);
+        $callsAfterFirstPass = $callCount;
         // Second call with the same key should NOT trigger another backend call
         $i->translateHtml('<p>hello world</p>');
-        self::assertSame(1, $callCount);
+        self::assertSame([1, 1], [$callsAfterFirstPass, $callCount]);
     }
 
     public function testInitialCacheBypassesBackendForKnownKeys(): void

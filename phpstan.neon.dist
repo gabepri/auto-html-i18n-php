@@ -5,6 +5,15 @@ includes:
     - phar://phpstan.phar/conf/bleedingEdge.neon
 parameters:
     level: 9
+    # Infer types for every PHP version the package supports, not just the one PHPStan runs on,
+    # so the result doesn't depend on which PHP the CI job uses. Language features newer than
+    # the minimum are flagged either way (from composer.json's "php"). A call to a function
+    # newer than the minimum is not, since PHPStan takes functions from the PHP it runs on;
+    # the per-version test matrix catches those the tests reach. Keep min in step with
+    # composer.json's "php" and max with the newest version in the CI matrix.
+    phpVersion:
+        min: 80100
+        max: 80599
     paths:
         - src
         - tests

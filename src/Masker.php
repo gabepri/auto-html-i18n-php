@@ -27,6 +27,34 @@ final class Masker
     public const IGNORE_OPEN = "\u{E000}";
     public const IGNORE_CLOSE = "\u{E001}";
 
+    /**
+     * Code point blocks of the scripts written without spaces between words: Thai, Lao,
+     * Myanmar, Khmer, CJK symbols (々 〆 〇), Hiragana, Katakana, Katakana phonetic
+     * extensions, CJK ideographs with their extensions and compatibility forms, halfwidth
+     * Katakana and the historic kana. Blocks rather than \p{Han} etc. so that the kana
+     * marks Unicode files under the Common and Inherited scripts (the long-vowel mark ー,
+     * the combining voiced marks) count too, and because PCRE2 10.40 changed \p{Han} from
+     * Script to Script_Extensions, which would make the answer depend on the PCRE build
+     * (PHP 8.1 commonly ships 10.39). Identical to the JS port's SPACELESS_SCRIPTS.
+     */
+    private const SPACELESS_SCRIPTS = '\x{0E00}-\x{0EFF}\x{1000}-\x{109F}\x{1780}-\x{17FF}\x{3000}-\x{30FF}\x{31F0}-\x{31FF}'
+        . '\x{3400}-\x{4DBF}\x{4E00}-\x{9FFF}\x{F900}-\x{FAFF}\x{FF66}-\x{FF9F}\x{1AFF0}-\x{1B16F}\x{20000}-\x{3FFFF}';
+
+    private const WORD_CHAR = '[\p{L}\p{M}\p{N}]';
+    private const SPACELESS_CHAR = '[' . self::SPACELESS_SCRIPTS . ']';
+
+    /**
+     * The position is not inside a word. Two word characters (letter, mark or number) side
+     * by side are one word unless either belongs to a spaceless script, so this holds when
+     * the character before or the one after is absent, not a word character, or spaceless.
+     * Placed on both sides of the ignoreWord alternation, the lookbehinds at the end of a
+     * match read the word's own last character, so an edge that is not a word character
+     * (`CA$`) or belongs to a spaceless script (`田中`) never blocks the match. Flat
+     * alternatives with no lookaround nested in another, mirroring the JS port.
+     */
+    private const NOT_INSIDE_WORD = '(?:(?<!' . self::WORD_CHAR . ')|(?<=' . self::SPACELESS_CHAR . ')'
+        . '|(?!' . self::WORD_CHAR . ')|(?=' . self::SPACELESS_CHAR . '))';
+
     /** @var IgnoreWordEntry[] */
     private array $ignoreWords;
 
@@ -721,13 +749,16 @@ final class Masker
         $groups = [];
         $this->groupTypeMap = [];
 
-        // 1. IgnoreWords (longest first, alternation)
+        // 1. IgnoreWords (longest first), as whole words only: a match may neither start nor
+        // end inside a word. One assertion around the whole alternation, not one per word,
+        // keeps the regex size independent of the word count. Where the longest alternative
+        // would split a word, backtracking falls through to a shorter one.
         if (count($this->ignoreWords) > 0) {
             $alts = [];
             foreach ($this->ignoreWords as $w) {
                 $alts[] = preg_quote($w->word, '/');
             }
-            $groups[] = '(' . implode('|', $alts) . ')';
+            $groups[] = '(' . self::NOT_INSIDE_WORD . '(?:' . implode('|', $alts) . ')' . self::NOT_INSIDE_WORD . ')';
             $this->groupTypeMap[] = VariableType::IgnoreWord;
         }
 
